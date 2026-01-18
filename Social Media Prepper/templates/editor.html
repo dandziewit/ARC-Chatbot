@@ -2,133 +2,391 @@
 
 {% block title %}Editor - Social Studio{% endblock %}
 
-{% block content %}
-<div class="editor-container">
-    <h1>Media Editor</h1>
-    <p class="subtitle">Edit and customize your content</p>
+{% block extra_css %}
+<style>
+.processing-feedback {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 1rem 1.5rem;
+    background: #28a745;
+    color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    z-index: 1000;
+    animation: slideIn 0.3s ease-out;
+}
 
-    {% if files and files|length > 0 %}
-    <div class="editor-workspace">
-        <div class="files-panel">
-            <h3>Your Files</h3>
-            <div id="filesList">
-                {% for file in files %}
-                <div class="editor-file-item" data-file='{{ file | tojson }}' onclick="selectFile(this)">
-                    <span class="file-icon">
-                        {% if file.type == 'audio' %}🎵
-                        {% elif file.type == 'video' %}🎬
-                        {% else %}🖼️
-                        {% endif %}
-                    </span>
-                    <span class="file-name">{{ file.original_name }}</span>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
+.processing-feedback.error {
+    background: #dc3545;
+}
 
-        <div class="editor-panel">
-            <div id="editorContent">
-                <p class="placeholder-text">Select a file to edit</p>
-            </div>
-        </div>
+.processing-feedback.processing {
+    background: #007bff;
+}
 
-        <div class="controls-panel">
-            <h3>Content Generation</h3>
-            <div class="form-group">
-                <label>Platform:</label>
-                <select id="platformSelect" class="form-control">
-                    <option value="instagram">Instagram</option>
-                    <option value="tiktok">TikTok</option>
-                    <option value="facebook">Facebook</option>
-                    <option value="youtube">YouTube</option>
-                    <option value="twitter">Twitter</option>
-                </select>
-            </div>
-            <button onclick="generateContent()" class="btn btn-primary">Generate Captions & Hashtags</button>
-            
-            <div id="generatedContent" style="display: none; margin-top: 20px;">
-                <h4>Generated Content</h4>
-                <div class="form-group">
-                    <label>Caption:</label>
-                    <textarea id="captionText" class="form-control" rows="3"></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Hashtags:</label>
-                    <div id="hashtagsList" class="hashtags-container"></div>
-                </div>
-            </div>
-        </div>
-    </div>
+@keyframes slideIn {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
 
-    <div class="action-buttons">
-        <button onclick="processAll()" class="btn btn-success btn-large">Process All Files</button>
-        <a href="{{ url_for('preview') }}" class="btn btn-primary btn-large">Continue to Preview</a>
-    </div>
-    {% else %}
-    <div class="empty-state">
-        <p>No files uploaded yet</p>
-        <a href="{{ url_for('upload_page') }}" class="btn btn-primary">Upload Files</a>
-    </div>
-    {% endif %}
-</div>
+.caption-box {
+    background: #f8f9fa;
+    border: 2px solid #007bff;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.caption-box h4 {
+    margin: 0 0 0.5rem 0;
+    color: #007bff;
+    font-size: 1rem;
+}
+
+.caption-box p {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.hashtags-box {
+    background: #fff;
+    border: 2px solid #6f42c1;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.hashtags-box h4 {
+    margin: 0 0 0.5rem 0;
+    color: #6f42c1;
+    font-size: 1rem;
+}
+</style>
 {% endblock %}
 
-{% block extra_js %}
+{% block content %}
+<div class="editor-container">
+    <h1>📝 Editor</h1>
+    <p class="subtitle">Edit your content, captions, and hashtags</p>
+    
+    <div class="editor-workspace">
+        <!-- Files Panel -->
+        <div class="files-panel">
+            <h3>📁 Your Files</h3>
+            <div id="filesList" class="files-list">
+                <!-- Files will be loaded here -->
+            </div>
+        </div>
+        
+        <!-- Editor Panel -->
+        <div class="editor-panel">
+            <div id="editorContent" class="editor-content">
+                <div class="empty-state">
+                    <h3>👈 Select a file to edit</h3>
+                    <p>Choose a file from the left panel to start editing</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Actions Panel -->
+        <div class="actions-panel">
+            <h3>⚡ Quick Actions</h3>
+            
+            <button onclick="saveAllChanges()" class="btn btn-primary">
+                💾 Save All Changes
+            </button>
+            
+            <button onclick="goToPreview()" class="btn btn-success">
+                👀 Preview & Export
+            </button>
+            
+            <button onclick="clearAll()" class="btn btn-danger">
+                🗑️ Clear All
+            </button>
+            
+            <div class="info-box">
+                <strong>💡 Tips:</strong>
+                <ul>
+                    <li>Captions auto-generated on upload</li>
+                    <li>Hashtags auto-generated on upload</li>
+                    <li>Edit and save changes</li>
+                    <li>Process files to trim/crop</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
+let uploadedFiles = [];
 let selectedFile = null;
 
-function selectFile(element) {
-    // Remove previous selection
-    document.querySelectorAll('.editor-file-item').forEach(el => {
-        el.classList.remove('selected');
+// Load files on page load
+window.addEventListener('DOMContentLoaded', async () => {
+    await loadFiles();
+});
+
+async function loadFiles() {
+    try {
+        const response = await fetch('/api/session/files');
+        const data = await response.json();
+        
+        uploadedFiles = data.files || [];
+        
+        if (uploadedFiles.length === 0) {
+            document.getElementById('filesList').innerHTML = `
+                <div class="empty-state">
+                    <p>No files uploaded yet</p>
+                    <a href="/upload" class="btn btn-primary">Upload Files</a>
+                </div>
+            `;
+            return;
+        }
+        
+        renderFilesList();
+    } catch (error) {
+        console.error('Error loading files:', error);
+        showFeedback('Error loading files: ' + error.message, 'error');
+    }
+}
+
+function renderFilesList() {
+    const filesList = document.getElementById('filesList');
+    filesList.innerHTML = '';
+    
+    uploadedFiles.forEach((file, index) => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item' + (selectedFile === file ? ' active' : '');
+        fileItem.onclick = () => selectFile(file);
+        
+        const icon = file.type === 'audio' ? '🎵' : '🖼️';
+        
+        fileItem.innerHTML = `
+            <div class="file-icon">${icon}</div>
+            <div class="file-info">
+                <div class="file-name">${file.original_name || file.filename}</div>
+                <div class="file-type">${file.type}</div>
+            </div>
+        `;
+        
+        filesList.appendChild(fileItem);
     });
-    
-    // Add selection
-    element.classList.add('selected');
-    selectedFile = JSON.parse(element.dataset.file);
-    
-    // Show editor for this file type
-    showEditor(selectedFile);
+}
+
+function selectFile(file) {
+    selectedFile = file;
+    renderFilesList();
+    showEditor(file);
 }
 
 function showEditor(file) {
     const editorContent = document.getElementById('editorContent');
     
-    if (file.type === 'audio') {
-        editorContent.innerHTML = `
-            <h3>Audio Editor: ${file.original_name}</h3>
+    const icon = file.type === 'audio' ? '🎵' : '🖼️';
+    const hashtags = file.hashtags || [];
+    const hashtagsHTML = hashtags.map(tag => `<span class="hashtag-badge">${tag}</span>`).join('');
+    
+    editorContent.innerHTML = `
+        <div class="file-editor">
+            <h2>${icon} ${file.original_name || file.filename}</h2>
+            
+            <!-- CAPTION DISPLAY -->
+            <div class="caption-box">
+                <h4>📝 Auto-Generated Caption</h4>
+                <p>${file.caption || 'No caption generated yet'}</p>
+            </div>
+            
+            <!-- HASHTAGS DISPLAY -->
+            <div class="hashtags-box">
+                <h4>🏷️ Auto-Generated Hashtags</h4>
+                <div class="hashtags-list">
+                    ${hashtagsHTML || '<p>No hashtags generated yet</p>'}
+                </div>
+            </div>
+            
+            <!-- Caption Editor -->
+            <div class="editor-section">
+                <h3>✍️ Edit Caption</h3>
+                <textarea id="captionInput" class="form-control" rows="5" 
+                          placeholder="Write your caption here...">${file.caption || ''}</textarea>
+                <div class="char-count">
+                    <span id="charCount">${(file.caption || '').length}</span> characters
+                </div>
+            </div>
+            
+            <!-- Hashtags Editor -->
+            <div class="editor-section">
+                <h3>🏷️ Edit Hashtags</h3>
+                <div id="hashtagsDisplay" class="hashtags-display">
+                    ${hashtagsHTML || '<p class="text-muted">No hashtags yet</p>'}
+                </div>
+                <div class="hashtag-input-group">
+                    <input type="text" id="hashtagInput" class="form-control" 
+                           placeholder="Add hashtag (without #)">
+                    <button onclick="addHashtag()" class="btn btn-secondary">Add</button>
+                </div>
+                <button onclick="regenerateHashtags()" class="btn btn-outline">
+                    🔄 Regenerate Hashtags
+                </button>
+            </div>
+            
+            ${file.type === 'audio' ? renderAudioEditor(file) : renderImageEditor(file)}
+            
+            <div class="editor-actions">
+                <button onclick="saveFileChanges()" class="btn btn-primary">
+                    💾 Save Changes
+                </button>
+            </div>
+        </div>
+    `;
+    
+    // Add event listeners
+    const captionInput = document.getElementById('captionInput');
+    if (captionInput) {
+        captionInput.addEventListener('input', updateCharCount);
+    }
+}
+
+function renderAudioEditor(file) {
+    const edits = file.edits || {};
+    return `
+        <div class="editor-section">
+            <h3>✂️ Trim Audio</h3>
             <div class="form-group">
                 <label>Start Time (seconds):</label>
-                <input type="number" id="startTime" class="form-control" value="0" min="0">
+                <input type="number" id="startTime" class="form-control" 
+                       value="${edits.start_time || 0}" min="0" step="0.1">
             </div>
             <div class="form-group">
                 <label>Duration (seconds):</label>
-                <input type="number" id="duration" class="form-control" value="15" min="1" max="60">
+                <input type="number" id="duration" class="form-control" 
+                       value="${edits.duration || 15}" min="1" max="60" step="0.1">
             </div>
-            <button onclick="processAudio()" class="btn btn-primary">Trim Audio</button>
-        `;
-    } else if (file.type === 'image') {
-        editorContent.innerHTML = `
-            <h3>Image Editor: ${file.original_name}</h3>
+            <button onclick="processAudio()" class="btn btn-success">
+                🎬 Apply Trim
+            </button>
+        </div>
+    `;
+}
+
+function renderImageEditor(file) {
+    const edits = file.edits || {};
+    return `
+        <div class="editor-section">
+            <h3>✂️ Crop Image</h3>
             <div class="form-group">
-                <label>Aspect Ratio:</label>
+                <label>Platform / Aspect Ratio:</label>
                 <select id="aspectRatio" class="form-control">
-                    <option value="1:1">1:1 (Square)</option>
-                    <option value="9:16">9:16 (Story)</option>
-                    <option value="4:5">4:5 (Portrait)</option>
-                    <option value="16:9">16:9 (Landscape)</option>
+                    <option value="1:1" ${edits.aspect_ratio === '1:1' ? 'selected' : ''}>1:1 (Square - Instagram Feed)</option>
+                    <option value="9:16" ${edits.aspect_ratio === '9:16' ? 'selected' : ''}>9:16 (Story - Instagram/TikTok)</option>
+                    <option value="4:5" ${edits.aspect_ratio === '4:5' ? 'selected' : ''}>4:5 (Portrait - Instagram)</option>
+                    <option value="16:9" ${edits.aspect_ratio === '16:9' ? 'selected' : ''}>16:9 (Landscape - YouTube)</option>
                 </select>
             </div>
-            <button onclick="processImage()" class="btn btn-primary">Process Image</button>
-        `;
+            <button onclick="processImage()" class="btn btn-success">
+                🖼️ Apply Crop
+            </button>
+        </div>
+    `;
+}
+
+function updateCharCount() {
+    const caption = document.getElementById('captionInput').value;
+    document.getElementById('charCount').textContent = caption.length;
+}
+
+function addHashtag() {
+    const input = document.getElementById('hashtagInput');
+    let hashtag = input.value.trim();
+    
+    if (!hashtag) return;
+    
+    // Remove # if user added it
+    hashtag = hashtag.replace(/^#/, '');
+    
+    // Add # for display
+    if (!hashtag.startsWith('#')) {
+        hashtag = '#' + hashtag;
+    }
+    
+    if (!selectedFile.hashtags) {
+        selectedFile.hashtags = [];
+    }
+    
+    if (!selectedFile.hashtags.includes(hashtag)) {
+        selectedFile.hashtags.push(hashtag);
+        
+        // Update display
+        const display = document.getElementById('hashtagsDisplay');
+        const badge = document.createElement('span');
+        badge.className = 'hashtag-badge';
+        badge.textContent = hashtag;
+        badge.onclick = () => removeHashtag(hashtag);
+        display.appendChild(badge);
+        
+        input.value = '';
+        showFeedback('Hashtag added! Click "Save Changes" to save.', 'processing');
+    }
+}
+
+function removeHashtag(hashtag) {
+    if (selectedFile && selectedFile.hashtags) {
+        selectedFile.hashtags = selectedFile.hashtags.filter(h => h !== hashtag);
+        showEditor(selectedFile);
+        showFeedback('Hashtag removed! Click "Save Changes" to save.', 'processing');
+    }
+}
+
+async function regenerateHashtags() {
+    if (!selectedFile) return;
+    
+    showFeedback('Regenerating hashtags...', 'processing');
+    
+    try {
+        const response = await fetch('/api/generate-content', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                platform: 'instagram',
+                media_type: selectedFile.type === 'audio' ? 'music' : 'image'
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            selectedFile.hashtags = data.hashtags;
+            showEditor(selectedFile);
+            showFeedback('✅ Hashtags regenerated! Click "Save Changes" to save.', 'success');
+        } else {
+            showFeedback('Error: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showFeedback('Error regenerating hashtags: ' + error.message, 'error');
     }
 }
 
 async function processAudio() {
     if (!selectedFile) return;
     
-    const startTime = parseInt(document.getElementById('startTime').value);
-    const duration = parseInt(document.getElementById('duration').value);
+    const startTime = parseFloat(document.getElementById('startTime').value) || 0;
+    const duration = parseFloat(document.getElementById('duration').value) || 15;
+    
+    showFeedback('🎵 Processing audio... Please wait', 'processing');
+    
+    // Store edits
+    selectedFile.edits = {
+        start_time: startTime,
+        duration: duration
+    };
     
     try {
         const response = await fetch('/api/process', {
@@ -144,12 +402,12 @@ async function processAudio() {
         const data = await response.json();
         
         if (data.success) {
-            alert(`Audio processed successfully: ${data.filename}`);
+            showFeedback('✅ Audio trimmed successfully! File: ' + data.filename, 'success');
         } else {
-            alert(`Error: ${data.error}`);
+            showFeedback('❌ Error: ' + data.error, 'error');
         }
     } catch (error) {
-        alert(`Error: ${error.message}`);
+        showFeedback('❌ Error processing audio: ' + error.message, 'error');
     }
 }
 
@@ -157,6 +415,13 @@ async function processImage() {
     if (!selectedFile) return;
     
     const aspectRatio = document.getElementById('aspectRatio').value;
+    
+    showFeedback('🖼️ Processing image... Please wait', 'processing');
+    
+    // Store edits
+    selectedFile.edits = {
+        aspect_ratio: aspectRatio
+    };
     
     try {
         const response = await fetch('/api/process', {
@@ -171,51 +436,101 @@ async function processImage() {
         const data = await response.json();
         
         if (data.success) {
-            alert(`Image processed successfully: ${data.filename}`);
+            showFeedback('✅ Image cropped successfully! File: ' + data.filename, 'success');
         } else {
-            alert(`Error: ${data.error}`);
+            showFeedback('❌ Error: ' + data.error, 'error');
         }
     } catch (error) {
-        alert(`Error: ${error.message}`);
+        showFeedback('❌ Error processing image: ' + error.message, 'error');
     }
 }
 
-async function generateContent() {
-    const platform = document.getElementById('platformSelect').value;
-    const mediaType = selectedFile ? selectedFile.type : 'image';
+async function saveFileChanges() {
+    if (!selectedFile) return;
+    
+    // Get current values
+    const caption = document.getElementById('captionInput').value;
+    
+    showFeedback('💾 Saving changes...', 'processing');
     
     try {
-        const response = await fetch('/api/generate-content', {
+        const response = await fetch('/api/file/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                platform: platform,
-                media_type: mediaType
+                filename: selectedFile.filename,
+                caption: caption,
+                hashtags: selectedFile.hashtags || [],
+                edits: selectedFile.edits || {}
             })
         });
         
         const data = await response.json();
         
         if (data.success) {
-            document.getElementById('captionText').value = data.caption;
-            
-            const hashtagsList = document.getElementById('hashtagsList');
-            hashtagsList.innerHTML = data.hashtags.map(tag => 
-                `<span class="hashtag-badge">${tag}</span>`
-            ).join('');
-            
-            document.getElementById('generatedContent').style.display = 'block';
+            selectedFile.caption = caption;
+            showFeedback('✅ Changes saved successfully!', 'success');
+            // Refresh the editor to show updated captions
+            showEditor(selectedFile);
         } else {
-            alert(`Error: ${data.error}`);
+            showFeedback('❌ Error: ' + data.error, 'error');
         }
     } catch (error) {
-        alert(`Error: ${error.message}`);
+        showFeedback('❌ Error saving changes: ' + error.message, 'error');
     }
 }
 
-function processAll() {
-    alert('Processing all files... This may take a moment.');
-    // You can implement batch processing here
+async function saveAllChanges() {
+    if (selectedFile) {
+        await saveFileChanges();
+    } else {
+        showFeedback('✅ All changes saved!', 'success');
+    }
+}
+
+function goToPreview() {
+    window.location.href = '/preview';
+}
+
+async function clearAll() {
+    if (!confirm('Are you sure you want to clear all files? This cannot be undone.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/session/clear', {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            showFeedback('Session cleared!', 'success');
+            setTimeout(() => {
+                window.location.href = '/upload';
+            }, 1000);
+        }
+    } catch (error) {
+        showFeedback('Error clearing session: ' + error.message, 'error');
+    }
+}
+
+function showFeedback(message, type = 'success') {
+    // Remove existing feedback
+    const existing = document.querySelector('.processing-feedback');
+    if (existing) {
+        existing.remove();
+    }
+    
+    // Create new feedback
+    const feedback = document.createElement('div');
+    feedback.className = `processing-feedback ${type}`;
+    feedback.textContent = message;
+    document.body.appendChild(feedback);
+    
+    // Auto-remove after 4 seconds
+    setTimeout(() => {
+        feedback.style.animation = 'slideIn 0.3s ease-out reverse';
+        setTimeout(() => feedback.remove(), 300);
+    }, 4000);
 }
 </script>
 {% endblock %}
