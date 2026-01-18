@@ -1,64 +1,40 @@
 """
-Social Studio - Web Application
-Flask-based browser interface for social media content preparation
+Audio Clip Maker & Format Converter
+Simple Flask app for converting and clipping audio files
 """
 
-from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, send_file, session
 from werkzeug.utils import secure_filename
 import os
 from pathlib import Path
 import json
 import tempfile
 from datetime import datetime
-import secrets
+import logging
+import subprocess
 
-from social_studio.config_manager import ConfigManager
-from social_studio.content_processor import ContentProcessor
-from social_studio.caption_generator import CaptionGenerator
-from social_studio.export_manager import ExportManager
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = 'social-studio-secret-key-2026'  # Fixed secret key for session persistence
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
+app.secret_key = 'audio-converter-2026'
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max
 app.config['UPLOAD_FOLDER'] = Path('uploads')
 app.config['OUTPUT_FOLDER'] = Path('output')
-app.config['SESSION_TYPE'] = 'filesystem'
 
 # Create required directories with subdirectories
 app.config['UPLOAD_FOLDER'].mkdir(exist_ok=True)
 (app.config['UPLOAD_FOLDER'] / 'audio').mkdir(exist_ok=True)
-(app.config['UPLOAD_FOLDER'] / 'images').mkdir(exist_ok=True)
 app.config['OUTPUT_FOLDER'].mkdir(exist_ok=True)
 
-# Initialize Social Studio components
-config_file = Path(__file__).parent / 'config' / 'config.yaml'
-config_manager = ConfigManager(str(config_file))
-content_processor = ContentProcessor(config_manager)
-caption_generator = CaptionGenerator(config_manager)
-export_manager = ExportManager(config_manager)
-
 # Allowed file extensions
-ALLOWED_EXTENSIONS = {
-    'audio': {'mp3', 'wav', 'm4a', 'aac'},
-    'image': {'jpg', 'jpeg', 'png', 'webp'}
-}
-
-def allowed_file(filename, file_type):
-    """Check if file extension is allowed"""
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS.get(file_type, set())
-
-def get_file_type(filename):
-    """Determine file type from extension"""
-    ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
-    for file_type, extensions in ALLOWED_EXTENSIONS.items():
-        if ext in extensions:
-            return file_type
-    return None
+AUDIO_EXTENSIONS = {'mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'wma', 'opus'}
+ALLOWED_FORMATS = {'mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'}
 
 @app.route('/')
 def index():
-    """Main dashboard"""
+    """Home page"""
     return render_template('index.html')
 
 @app.route('/upload')
@@ -68,7 +44,7 @@ def upload_page():
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
-    """Handle file upload with proper session persistence"""
+    """Upload audio file"""
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': 'No file provided'}), 400
     
@@ -76,440 +52,158 @@ def upload_file():
     if file.filename == '':
         return jsonify({'success': False, 'error': 'No file selected'}), 400
     
-    # Get file extension
     if '.' not in file.filename:
         return jsonify({'success': False, 'error': 'File has no extension'}), 400
     
     ext = file.filename.rsplit('.', 1)[1].lower()
     
-    # Determine file type and folder
-    if ext in ['mp3', 'wav', 'm4a', 'aac']:
-        file_type = 'audio'
-        subfolder = 'audio'
-    elif ext in ['jpg', 'jpeg', 'png', 'webp']:
-        file_type = 'image'
-        subfolder = 'images'
-    else:
-        return jsonify({'success': False, 'error': f'Unsupported file type: .{ext}'}), 400
+    if ext not in AUDIO_EXTENSIONS:
+        return jsonify({'success': False, 'error': f'Unsupported format: {ext}. Supported: MP3, WAV, M4A, AAC, FLAC, OGG'}), 400
     
-    # Save file with timestamp to avoid conflicts
-    filename = secure_filename(file.filename)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    safe_filename = f"{timestamp}_{filename}"
-    
-    # Save to appropriate subfolder
-    upload_path = app.config['UPLOAD_FOLDER'] / subfolder / safe_filename
-    file.save(upload_path)
-    
-    # Initialize session if needed
-    if 'uploaded_files' not in session:
-        session['uploaded_files'] = []
-    
-    # Generate caption and hashtags for the file
     try:
-        content_type = 'music' if file_type == 'audio' else 'image'
-        caption = caption_generator.generate_caption(
-            content_type=content_type,
-            platform='instagram',
-            filename=filename,
-            use_ai=False
-        )
-        hashtags = caption_generator.generate_hashtags(file_type, 'instagram')
+        filename = secure_filename(file.filename)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        safe_filename = f"{timestamp}_{filename}"
+        
+        upload_path = app.config['UPLOAD_FOLDER'] / 'audio' / safe_filename
+        file.save(str(upload_path))
+        
+        # Initialize session
+        if 'uploaded_files' not in session:
+            session['uploaded_files'] = []
+        
+        file_info = {
+            'filename': safe_filename,
+            'original_name': filename,
+            'path': str(upload_path),
+            'format': ext
+        }
+        
+        session['uploaded_files'].append(file_info)
+        session.modified = True
+        
+        return jsonify({
+            'success': True,
+            'filename': safe_filename,
+            'original_name': filename,
+            'format': ext
+        })
+    
     except Exception as e:
-        logger.warning(f"Could not generate caption/hashtags: {e}")
-        caption = f"Check out this {file_type}!"
-        hashtags = []
-    
-    # Add file info to session
-    file_info = {
-        'filename': safe_filename,
-        'original_name': filename,
-        'type': file_type,
-        'path': str(upload_path),
-        'subfolder': subfolder,
-        'caption': caption,
-        'hashtags': hashtags,
-        'edits': {}
-    }
-    
-    session['uploaded_files'].append(file_info)
-    session.modified = True
-    
-    return jsonify({
-        'success': True,
-        'filename': safe_filename,
-        'original_name': filename,
-        'type': file_type,
-        'caption': caption,
-        'hashtags': hashtags,
-        'files': session['uploaded_files']
-    })
+        logger.error(f"Upload error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/editor')
 def editor():
-    """Media editor page"""
+    """Editor page"""
     uploaded_files = session.get('uploaded_files', [])
     return render_template('editor.html', files=uploaded_files)
 
-@app.route('/api/process', methods=['POST'])
-def process_media():
-    """Process media (trim, crop, etc.)"""
+@app.route('/api/session/files', methods=['GET'])
+def get_session_files():
+    """Get uploaded files from session"""
+    return jsonify({
+        'files': session.get('uploaded_files', [])
+    })
+
+@app.route('/api/convert', methods=['POST'])
+def convert_audio():
+    """Convert audio to different format and optionally trim"""
     data = request.json
-    file_info = data.get('file')
-    media_type = file_info.get('type')
+    filename = data.get('filename')
+    output_format = data.get('output_format', 'mp3').lower()
+    start_time = float(data.get('start_time', 0))
+    duration = float(data.get('duration', 0))
     
-    try:
-        if media_type == 'audio':
-            # Trim audio
-            start_time = float(data.get('start_time', 0))
-            duration = float(data.get('duration', 15))
-            input_path = Path(file_info['path'])
-            output_dir = app.config['OUTPUT_FOLDER']
-            platform = data.get('platform', 'instagram')
-            
-            output_path = content_processor.clip_audio(
-                input_path,
-                output_dir,
-                start_time,
-                duration,
-                platform
-            )
-            
-            if output_path:
-                # Store processed file in session
-                if 'processed_files' not in session:
-                    session['processed_files'] = []
-                
-                session['processed_files'].append({
-                    'filename': output_path.name,
-                    'type': 'audio',
-                    'path': str(output_path),
-                    'original': file_info['original_name']
-                })
-                session.modified = True
-                
-                return jsonify({
-                    'success': True,
-                    'output_path': str(output_path),
-                    'filename': output_path.name
-                })
-            else:
-                return jsonify({'error': 'Failed to process audio'}), 500
-        
-        elif media_type == 'image':
-            # Process image
-            input_path = Path(file_info['path'])
-            platform = data.get('platform', 'instagram')
-            output_dir = app.config['OUTPUT_FOLDER']
-            
-            output_path = content_processor.process_image(
-                input_path,
-                output_dir,
-                platform
-            )
-            
-            if output_path:
-                # Store processed file in session
-                if 'processed_files' not in session:
-                    session['processed_files'] = []
-                
-                session['processed_files'].append({
-                    'filename': output_path.name,
-                    'type': 'image',
-                    'path': str(output_path),
-                    'original': file_info['original_name']
-                })
-                session.modified = True
-                
-                return jsonify({
-                    'success': True,
-                    'output_path': str(output_path),
-                    'filename': output_path.name
-                })
-            else:
-                return jsonify({'error': 'Failed to process image'}), 500
-        
-        else:
-            return jsonify({'error': 'Unsupported media type'}), 400
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/generate-content', methods=['POST'])
-def generate_content():
-    """Generate captions and hashtags"""
-    data = request.json
-    platform = data.get('platform', 'instagram')
-    media_type = data.get('media_type', 'image')
-    
-    try:
-        # Map media type to content type for caption generator
-        content_type = 'music' if media_type == 'audio' else 'image'
-        
-        # Generate caption with all required parameters
-        caption = caption_generator.generate_caption(
-            content_type=content_type,
-            platform=platform,
-            filename='',
-            use_ai=False
-        )
-        
-        # Generate hashtags
-        hashtags = caption_generator.generate_hashtags(media_type, platform)
-        
-        return jsonify({
-            'success': True,
-            'caption': caption,
-            'hashtags': hashtags
-        })
-    
-    except Exception as e:
-        logger.error(f"Caption generation error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/preview')
-def preview():
-    """Preview page for generated content"""
-    uploaded_files = session.get('uploaded_files', [])
-    processed_files = session.get('processed_files', [])
-    
-    return render_template('preview.html', 
-                         uploaded_files=uploaded_files,
-                         processed_files=processed_files)
-
-@app.route('/api/export', methods=['POST'])
-def export_content():
-    """Export content for schedulers with captions and hashtags from session"""
-    data = request.json
-    scheduler = data.get('scheduler', 'buffer')
-    format_type = data.get('format', 'csv')
-    
-    try:
-        # Get uploaded files from session with captions and hashtags
-        uploaded_files = session.get('uploaded_files', [])
-        
-        if not uploaded_files:
-            return jsonify({'error': 'No files uploaded. Please upload files first.'}), 400
-        
-        # Convert session files to posts format for export
-        posts = []
-        for file_info in uploaded_files:
-            post = {
-                'platform': 'instagram',  # Default platform
-                'caption': file_info.get('caption', ''),
-                'hashtags': ' '.join(file_info.get('hashtags', [])),
-                'media_type': file_info.get('type', 'image'),
-                'filename': file_info.get('filename', ''),
-                'original_name': file_info.get('original_name', '')
-            }
-            posts.append(post)
-        
-        # Export using the export manager
-        if format_type == 'csv':
-            output_file = export_manager.export_to_csv(posts, scheduler)
-        else:
-            output_file = export_manager.export_to_json(posts, scheduler)
-        
-        return jsonify({
-            'success': True,
-            'file': str(output_file),
-            'filename': output_file.name,
-            'post_count': len(posts)
-        })
-    
-    except Exception as e:
-        logger.error(f"Export error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/export-zip', methods=['POST'])
-def export_zip():
-    """Export all files and metadata as a ZIP archive"""
-    import zipfile
-    import io
-    from datetime import datetime
+    if not filename or output_format not in ALLOWED_FORMATS:
+        return jsonify({'error': 'Invalid format or filename'}), 400
     
     try:
         uploaded_files = session.get('uploaded_files', [])
+        file_info = None
+        for f in uploaded_files:
+            if f['filename'] == filename:
+                file_info = f
+                break
         
-        if not uploaded_files:
-            return jsonify({'error': 'No files to export'}), 400
+        if not file_info:
+            return jsonify({'error': 'File not found'}), 404
         
-        # Create ZIP in memory
-        zip_buffer = io.BytesIO()
+        input_path = file_info['path']
         
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            # Add each file
-            for file_info in uploaded_files:
-                file_path = app.config['UPLOAD_FOLDER'] / file_info['path']
-                
-                if file_path.exists():
-                    zip_file.write(file_path, file_info['filename'])
-            
-            # Create metadata JSON
-            metadata = []
-            for file_info in uploaded_files:
-                metadata.append({
-                    'filename': file_info['filename'],
-                    'type': file_info['type'],
-                    'caption': file_info.get('caption', ''),
-                    'hashtags': file_info.get('hashtags', []),
-                    'edits': file_info.get('edits', {})
-                })
-            
-            # Add metadata JSON to ZIP
-            import json
-            metadata_json = json.dumps(metadata, indent=2)
-            zip_file.writestr('metadata.json', metadata_json)
-            
-            # Add captions text file
-            captions_text = ""
-            for i, file_info in enumerate(uploaded_files, 1):
-                captions_text += f"\\n{'='*50}\\n"
-                captions_text += f"File {i}: {file_info['filename']}\\n"
-                captions_text += f"{'='*50}\\n"
-                captions_text += f"Caption:\\n{file_info.get('caption', '')}\\n\\n"
-                captions_text += f"Hashtags:\\n{' '.join(file_info.get('hashtags', []))}\\n"
-            
-            zip_file.writestr('captions.txt', captions_text)
+        # Create output filename
+        base_name = file_info['original_name'].rsplit('.', 1)[0]
+        output_filename = f"{base_name}_converted.{output_format}"
+        output_path = app.config['OUTPUT_FOLDER'] / output_filename
         
-        # Prepare ZIP for download
-        zip_buffer.seek(0)
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'social_studio_export_{timestamp}.zip'
+        # Build FFmpeg command
+        cmd = ['ffmpeg', '-i', input_path]
+        
+        # Add trimming if specified
+        if start_time > 0 or duration > 0:
+            cmd.extend(['-ss', str(start_time)])
+            if duration > 0:
+                cmd.extend(['-t', str(duration)])
+        
+        # Add output format options
+        if output_format == 'mp3':
+            cmd.extend(['-q:a', '2'])  # Good quality
+        elif output_format == 'wav':
+            cmd.extend(['-acodec', 'pcm_s16le'])
+        elif output_format == 'aac':
+            cmd.extend(['-c:a', 'aac', '-b:a', '192k'])
+        elif output_format == 'ogg':
+            cmd.extend(['-c:a', 'libvorbis', '-q:a', '5'])
+        
+        cmd.extend(['-y', str(output_path)])
+        
+        # Run conversion
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            logger.error(f"FFmpeg error: {result.stderr}")
+            return jsonify({'error': 'Conversion failed. Check FFmpeg installation.'}), 500
+        
+        return jsonify({
+            'success': True,
+            'filename': output_filename,
+            'format': output_format,
+            'download_url': f'/download/{output_filename}'
+        })
+    
+    except Exception as e:
+        logger.error(f"Conversion error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/download/<filename>')
+def download_file(filename):
+    """Download converted file"""
+    try:
+        file_path = app.config['OUTPUT_FOLDER'] / filename
+        
+        if not file_path.exists():
+            return jsonify({'error': 'File not found'}), 404
         
         return send_file(
-            zip_buffer,
-            mimetype='application/zip',
+            str(file_path),
             as_attachment=True,
             download_name=filename
         )
     
     except Exception as e:
-        logger.error(f"ZIP export error: {e}")
+        logger.error(f"Download error: {e}")
         return jsonify({'error': str(e)}), 500
-
-@app.route('/download/<path:filename>')
-def download_file(filename):
-    """Download processed file"""
-    try:
-        # Check in output folder
-        file_path = app.config['OUTPUT_FOLDER'] / filename
-        if file_path.exists():
-            return send_file(file_path, as_attachment=True)
-        
-        # Check in uploads/audio folder
-        audio_path = app.config['UPLOAD_FOLDER'] / 'audio' / filename
-        if audio_path.exists():
-            return send_file(audio_path, as_attachment=True)
-        
-        # Check in uploads/images folder
-        image_path = app.config['UPLOAD_FOLDER'] / 'images' / filename
-        if image_path.exists():
-            return send_file(image_path, as_attachment=True)
-        
-        # Check in scheduler export folder
-        export_path = Path('scheduler_export') / filename
-        if export_path.exists():
-            return send_file(export_path, as_attachment=True)
-        
-        return jsonify({'error': 'File not found'}), 404
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/preview/<path:filename>')
-def preview_file(filename):
-    """Preview file (serve without download)"""
-    try:
-        # Check in output folder
-        file_path = app.config['OUTPUT_FOLDER'] / filename
-        if file_path.exists():
-            return send_file(file_path)
-        
-        # Check in uploads folder (audio subfolder)
-        audio_path = app.config['UPLOAD_FOLDER'] / 'audio' / filename
-        if audio_path.exists():
-            return send_file(audio_path)
-        
-        # Check in uploads folder (images subfolder)
-        image_path = app.config['UPLOAD_FOLDER'] / 'images' / filename
-        if image_path.exists():
-            return send_file(image_path)
-        
-        # Check in main uploads folder (legacy)
-        upload_path = app.config['UPLOAD_FOLDER'] / filename
-        if upload_path.exists():
-            return send_file(upload_path)
-        
-        return jsonify({'error': 'File not found'}), 404
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/platforms')
-def get_platforms():
-    """Get available platforms"""
-    platforms = config_manager.config.get('platforms', {})
-    return jsonify({
-        'platforms': [
-            {'id': name, 'name': name.capitalize(), 'enabled': info.get('enabled', True)}
-            for name, info in platforms.items()
-            if info.get('enabled', True)
-        ]
-    })
 
 @app.route('/api/session/clear', methods=['POST'])
 def clear_session():
-    """Clear session data"""
+    """Clear all uploaded files"""
     session.clear()
     return jsonify({'success': True})
-
-@app.route('/api/file/update', methods=['POST'])
-def update_file_metadata():
-    """Update file caption, hashtags, or edits"""
-    data = request.json
-    filename = data.get('filename')
-    
-    if not filename:
-        return jsonify({'error': 'Filename required'}), 400
-    
-    try:
-        uploaded_files = session.get('uploaded_files', [])
-        
-        # Find and update the file
-        for file_info in uploaded_files:
-            if file_info['filename'] == filename:
-                if 'caption' in data:
-                    file_info['caption'] = data['caption']
-                if 'hashtags' in data:
-                    file_info['hashtags'] = data['hashtags']
-                if 'edits' in data:
-                    file_info['edits'] = data['edits']
-                
-                session['uploaded_files'] = uploaded_files
-                session.modified = True
-                
-                return jsonify({
-                    'success': True,
-                    'file': file_info
-                })
-        
-        return jsonify({'error': 'File not found'}), 404
-    
-    except Exception as e:
-        logger.error(f"Update error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/session/files', methods=['GET'])
-def get_session_files():
-    """Get uploaded files from session"""
-    uploaded_files = session.get('uploaded_files', [])
-    return jsonify({'success': True, 'files': uploaded_files})
 
 @app.errorhandler(413)
 def request_entity_too_large(error):
     """Handle file too large error"""
-    return jsonify({'error': 'File too large (max 50MB)'}), 413
+    return jsonify({'error': 'File too large (max 100MB)'}), 413
 
 @app.errorhandler(500)
 def internal_error(error):

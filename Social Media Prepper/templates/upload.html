@@ -1,42 +1,17 @@
 {% extends "base.html" %}
 
-{% block title %}Upload - Social Studio{% endblock %}
-
-{% block extra_css %}
-<style>
-.caption-preview {
-    display: block;
-    font-size: 0.8rem;
-    color: #6c757d;
-    font-style: italic;
-    margin-top: 0.3rem;
-    padding: 0.3rem 0.5rem;
-    background: #f8f9fa;
-    border-radius: 4px;
-}
-</style>
-{% endblock %}
+{% block title %}Upload Audio - Audio Clip Maker{% endblock %}
 
 {% block content %}
 <div class="upload-container">
-    <h1>Upload Media</h1>
-    <p class="subtitle">Choose your content type and upload files</p>
-
-    <!-- Media Type Selection -->
-    <div class="media-type-selector">
-        <button class="media-type-btn active" data-type="audio" onclick="selectMediaType('audio')">
-            🎵 Audio
-        </button>
-        <button class="media-type-btn" data-type="image" onclick="selectMediaType('image')">
-            🖼️ Image
-        </button>
-    </div>
+    <h1>Upload Audio File</h1>
+    <p class="subtitle">Upload audio to trim, convert, or export for schedulers</p>
 
     <div class="upload-zone" id="uploadZone">
-        <div class="upload-icon" id="uploadIcon">🎵</div>
-        <p id="uploadText">Drag & drop audio files here or click to browse</p>
-        <p class="file-types" id="fileTypes">Supported: MP3, WAV, M4A, AAC</p>
-        <input type="file" id="fileInput" accept="audio/*" style="display: none;">
+        <div class="upload-icon">🎵</div>
+        <p>Drag & drop audio files here or click to browse</p>
+        <p class="file-types">Supported: MP3, WAV, M4A, AAC, FLAC, OGG</p>
+        <input type="file" id="fileInput" accept="audio/*" multiple style="display: none;">
     </div>
 
     <div id="uploadedFiles" class="uploaded-files">
@@ -62,14 +37,7 @@
 const uploadZone = document.getElementById('uploadZone');
 const fileInput = document.getElementById('fileInput');
 const uploadedFiles = document.getElementById('uploadedFiles');
-const uploadProgress = document.getElementById('uploadProgress');
-const progressFill = document.getElementById('progressFill');
-const progressText = document.getElementById('progressText');
-const uploadIcon = document.getElementById('uploadIcon');
-const uploadText = document.getElementById('uploadText');
-const fileTypes = document.getElementById('fileTypes');
 
-let currentMediaType = 'audio';
 let uploadedFilesList = [];
 
 // Load existing files from session on page load
@@ -80,7 +48,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (data.files) {
             uploadedFilesList = data.files;
             data.files.forEach(file => {
-                addFileToList(file.original_name || file.filename, file.type);
+                addFileToList(file.original_name || file.filename, file.format);
             });
             updateFileCount();
         }
@@ -88,32 +56,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.log('No existing files in session');
     }
 });
-
-// Media type selection
-function selectMediaType(type) {
-    currentMediaType = type;
-    
-    // Update buttons
-    document.querySelectorAll('.media-type-btn').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.dataset.type === type) {
-            btn.classList.add('active');
-        }
-    });
-    
-    // Update upload zone
-    if (type === 'audio') {
-        uploadIcon.textContent = '🎵';
-        uploadText.textContent = 'Drag & drop audio files here or click to browse';
-        fileTypes.textContent = 'Supported: MP3, WAV, M4A, AAC';
-        fileInput.accept = 'audio/*';
-    } else if (type === 'image') {
-        uploadIcon.textContent = '🖼️';
-        uploadText.textContent = 'Drag & drop images here or click to browse';
-        fileTypes.textContent = 'Supported: JPG, PNG, WEBP';
-        fileInput.accept = 'image/*';
-    }
-}
 
 // Click to upload
 uploadZone.addEventListener('click', () => fileInput.click());
@@ -150,9 +92,6 @@ async function uploadFile(file) {
     formData.append('file', file);
 
     try {
-        uploadProgress.style.display = 'block';
-        progressText.textContent = `Uploading ${file.name}...`;
-
         const response = await fetch('/api/upload', {
             method: 'POST',
             body: formData
@@ -162,18 +101,13 @@ async function uploadFile(file) {
 
         if (data.success) {
             uploadedFilesList.push(data);
-            addFileToList(file.name, data.type, data.caption);
+            addFileToList(file.name, data.format);
             updateFileCount();
-            progressText.textContent = `✓ ${file.name} uploaded (caption auto-generated)`;
         } else {
             alert(`Error uploading ${file.name}: ${data.error}`);
         }
     } catch (error) {
         alert(`Error uploading ${file.name}: ${error.message}`);
-    } finally {
-        setTimeout(() => {
-            uploadProgress.style.display = 'none';
-        }, 1000);
     }
 }
 
@@ -183,21 +117,14 @@ function updateFileCount() {
     document.getElementById('continueBtn').style.display = count > 0 ? 'inline-block' : 'none';
 }
 
-function addFileToList(filename, type, caption = '') {
+function addFileToList(filename, format) {
     const fileItem = document.createElement('div');
     fileItem.className = 'file-item';
-    
-    const icon = type === 'audio' ? '🎵' : type === 'video' ? '🎬' : '🖼️';
-    
-    const captionPreview = caption ? `<span class="caption-preview" title="${caption}">${caption.substring(0, 50)}${caption.length > 50 ? '...' : ''}</span>` : '';
-    
     fileItem.innerHTML = `
-        <span class="file-icon">${icon}</span>
+        <span class="file-icon">🎵</span>
         <span class="file-name">${filename}</span>
-        <span class="file-type">${type}</span>
-        ${captionPreview}
+        <span class="file-type">${format.toUpperCase()}</span>
     `;
-    
     uploadedFiles.appendChild(fileItem);
 }
 
