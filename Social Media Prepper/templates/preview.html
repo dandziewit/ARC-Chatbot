@@ -67,6 +67,12 @@
             </div>
 
             <button onclick="exportContent()" class="btn btn-success btn-large">📤 Export Metadata</button>
+            
+            <hr style="margin: 2rem 0;">
+            
+            <h4>📦 Download Everything</h4>
+            <p class="help-text">Get all files with captions in one ZIP archive</p>
+            <button onclick="exportZip()" class="btn btn-primary btn-large">📥 Download ZIP</button>
         </div>
     </div>
 
@@ -131,6 +137,24 @@ async function exportContent() {
 
 function closeModal() {
     document.getElementById('exportModal').style.display = 'none';
+}
+
+async function exportZip() {
+    try {
+        // Direct download using form POST
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/api/export-zip';
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+        
+        setTimeout(() => {
+            alert('✅ ZIP export started! Your download should begin shortly.');
+        }, 500);
+    } catch (error) {
+        alert(`Error: ${error.message}`);
+    }
 }
 </script>
 {% endblock %}

@@ -271,6 +271,73 @@ def export_content():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/export-zip', methods=['POST'])
+def export_zip():
+    """Export all files and metadata as a ZIP archive"""
+    import zipfile
+    import io
+    from datetime import datetime
+    
+    try:
+        uploaded_files = session.get('uploaded_files', [])
+        
+        if not uploaded_files:
+            return jsonify({'error': 'No files to export'}), 400
+        
+        # Create ZIP in memory
+        zip_buffer = io.BytesIO()
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            # Add each file
+            for file_info in uploaded_files:
+                file_path = app.config['UPLOAD_FOLDER'] / file_info['path']
+                
+                if file_path.exists():
+                    zip_file.write(file_path, file_info['filename'])
+            
+            # Create metadata JSON
+            metadata = []
+            for file_info in uploaded_files:
+                metadata.append({
+                    'filename': file_info['filename'],
+                    'type': file_info['type'],
+                    'caption': file_info.get('caption', ''),
+                    'hashtags': file_info.get('hashtags', []),
+                    'edits': file_info.get('edits', {})
+                })
+            
+            # Add metadata JSON to ZIP
+            import json
+            metadata_json = json.dumps(metadata, indent=2)
+            zip_file.writestr('metadata.json', metadata_json)
+            
+            # Add captions text file
+            captions_text = ""
+            for i, file_info in enumerate(uploaded_files, 1):
+                captions_text += f"\\n{'='*50}\\n"
+                captions_text += f"File {i}: {file_info['filename']}\\n"
+                captions_text += f"{'='*50}\\n"
+                captions_text += f"Caption:\\n{file_info.get('caption', '')}\\n\\n"
+                captions_text += f"Hashtags:\\n{' '.join(file_info.get('hashtags', []))}\\n"
+            
+            zip_file.writestr('captions.txt', captions_text)
+        
+        # Prepare ZIP for download
+        zip_buffer.seek(0)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'social_studio_export_{timestamp}.zip'
+        
+        return send_file(
+            zip_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=filename
+        )
+    
+    except Exception as e:
+        logger.error(f"ZIP export error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/download/<path:filename>')
 def download_file(filename):
     """Download processed file"""
@@ -346,6 +413,42 @@ def clear_session():
     """Clear session data"""
     session.clear()
     return jsonify({'success': True})
+
+@app.route('/api/file/update', methods=['POST'])
+def update_file_metadata():
+    """Update file caption, hashtags, or edits"""
+    data = request.json
+    filename = data.get('filename')
+    
+    if not filename:
+        return jsonify({'error': 'Filename required'}), 400
+    
+    try:
+        uploaded_files = session.get('uploaded_files', [])
+        
+        # Find and update the file
+        for file_info in uploaded_files:
+            if file_info['filename'] == filename:
+                if 'caption' in data:
+                    file_info['caption'] = data['caption']
+                if 'hashtags' in data:
+                    file_info['hashtags'] = data['hashtags']
+                if 'edits' in data:
+                    file_info['edits'] = data['edits']
+                
+                session['uploaded_files'] = uploaded_files
+                session.modified = True
+                
+                return jsonify({
+                    'success': True,
+                    'file': file_info
+                })
+        
+        return jsonify({'error': 'File not found'}), 404
+    
+    except Exception as e:
+        logger.error(f"Update error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/session/files', methods=['GET'])
 def get_session_files():

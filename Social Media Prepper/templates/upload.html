@@ -2,6 +2,21 @@
 
 {% block title %}Upload - Social Studio{% endblock %}
 
+{% block extra_css %}
+<style>
+.caption-preview {
+    display: block;
+    font-size: 0.8rem;
+    color: #6c757d;
+    font-style: italic;
+    margin-top: 0.3rem;
+    padding: 0.3rem 0.5rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="upload-container">
     <h1>Upload Media</h1>
@@ -147,9 +162,9 @@ async function uploadFile(file) {
 
         if (data.success) {
             uploadedFilesList.push(data);
-            addFileToList(file.name, data.type);
+            addFileToList(file.name, data.type, data.caption);
             updateFileCount();
-            progressText.textContent = `✓ ${file.name} uploaded`;
+            progressText.textContent = `✓ ${file.name} uploaded (caption auto-generated)`;
         } else {
             alert(`Error uploading ${file.name}: ${data.error}`);
         }
@@ -168,16 +183,19 @@ function updateFileCount() {
     document.getElementById('continueBtn').style.display = count > 0 ? 'inline-block' : 'none';
 }
 
-function addFileToList(filename, type) {
+function addFileToList(filename, type, caption = '') {
     const fileItem = document.createElement('div');
     fileItem.className = 'file-item';
     
     const icon = type === 'audio' ? '🎵' : type === 'video' ? '🎬' : '🖼️';
     
+    const captionPreview = caption ? `<span class="caption-preview" title="${caption}">${caption.substring(0, 50)}${caption.length > 50 ? '...' : ''}</span>` : '';
+    
     fileItem.innerHTML = `
         <span class="file-icon">${icon}</span>
         <span class="file-name">${filename}</span>
         <span class="file-type">${type}</span>
+        ${captionPreview}
     `;
     
     uploadedFiles.appendChild(fileItem);
