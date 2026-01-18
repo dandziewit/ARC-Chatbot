@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Preview - Social Studio{% endblock %}
+
+{% block content %}
+<div class="preview-container">
+    <h1>Preview & Export</h1>
+    <p class="subtitle">Review your content before exporting</p>
+
+    <div class="preview-grid">
+        {% if processed_files %}
+        <div class="preview-section">
+            <h3>Processed Files</h3>
+            {% for file in processed_files %}
+            <div class="preview-card">
+                <h4>{{ file.name }}</h4>
+                <p>Type: {{ file.type }}</p>
+                <a href="{{ url_for('download_file', filename=file.name) }}" class="btn btn-sm btn-primary">Download</a>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="export-section">
+            <h3>Export Settings</h3>
+            
+            <div class="form-group">
+                <label>Scheduler:</label>
+                <select id="schedulerSelect" class="form-control">
+                    <option value="buffer">Buffer</option>
+                    <option value="publer">Publer</option>
+                    <option value="later">Later</option>
+                    <option value="meta">Meta Business Suite</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Export Format:</label>
+                <select id="formatSelect" class="form-control">
+                    <option value="csv">CSV</option>
+                    <option value="json">JSON</option>
+                </select>
+            </div>
+
+            <button onclick="exportContent()" class="btn btn-success btn-large">Export for Scheduler</button>
+        </div>
+    </div>
+
+    <div class="action-buttons">
+        <a href="{{ url_for('editor') }}" class="btn btn-secondary">Back to Editor</a>
+        <a href="{{ url_for('index') }}" class="btn btn-primary">Start New Project</a>
+    </div>
+</div>
+
+<div id="exportModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h3>Export Successful!</h3>
+        <p id="exportMessage">Your content has been exported.</p>
+        <a id="downloadLink" href="#" class="btn btn-primary">Download File</a>
+        <button onclick="closeModal()" class="btn btn-secondary">Close</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function exportContent() {
+    const scheduler = document.getElementById('schedulerSelect').value;
+    const format = document.getElementById('formatSelect').value;
+    
+    // Sample posts data - in a real app, this would come from session/state
+    const posts = [
+        {
+            platform: 'instagram',
+            caption: 'Check out this amazing content!',
+            hashtags: '#content #creative #socialmedia'
+        }
+    ];
+    
+    try {
+        const response = await fetch('/api/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                posts: posts,
+                scheduler: scheduler,
+                format: format
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('exportMessage').textContent = 
+                `Your content has been exported to ${data.filename}`;
+            document.getElementById('downloadLink').href = 
+                `/download/${data.filename}`;
+            document.getElementById('exportModal').style.display = 'flex';
+        } else {
+            alert(`Error: ${data.error}`);
+        }
+    } catch (error) {
+        alert(`Error: ${error.message}`);
+    }
+}
+
+function closeModal() {
+    document.getElementById('exportModal').style.display = 'none';
+}
+</script>
+{% endblock %}

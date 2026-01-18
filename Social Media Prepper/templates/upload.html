@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Upload - Social Studio{% endblock %}
+
+{% block content %}
+<div class="upload-container">
+    <h1>Upload Media</h1>
+    <p class="subtitle">Upload your audio, video, or image files</p>
+
+    <div class="upload-zone" id="uploadZone">
+        <div class="upload-icon">📁</div>
+        <p>Drag & drop files here or click to browse</p>
+        <p class="file-types">Supported: MP3, WAV, MP4, JPG, PNG</p>
+        <input type="file" id="fileInput" multiple accept="audio/*,video/*,image/*" style="display: none;">
+    </div>
+
+    <div id="uploadedFiles" class="uploaded-files">
+        <!-- Uploaded files will appear here -->
+    </div>
+
+    <div class="action-buttons">
+        <button onclick="clearFiles()" class="btn btn-secondary">Clear All</button>
+        <a href="{{ url_for('editor') }}" class="btn btn-primary">Continue to Editor</a>
+    </div>
+</div>
+
+<div id="uploadProgress" class="upload-progress" style="display: none;">
+    <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <p id="progressText">Uploading...</p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+const uploadedFiles = document.getElementById('uploadedFiles');
+const uploadProgress = document.getElementById('uploadProgress');
+const progressFill = document.getElementById('progressFill');
+const progressText = document.getElementById('progressText');
+
+// Click to upload
+uploadZone.addEventListener('click', () => fileInput.click());
+
+// Drag and drop
+uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('dragover');
+});
+
+uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('dragover');
+});
+
+uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+});
+
+// File input change
+fileInput.addEventListener('change', (e) => {
+    handleFiles(e.target.files);
+});
+
+async function handleFiles(files) {
+    for (const file of files) {
+        await uploadFile(file);
+    }
+}
+
+async function uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        uploadProgress.style.display = 'block';
+        progressText.textContent = `Uploading ${file.name}...`;
+
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            addFileToList(file.name, data.type);
+            progressText.textContent = `✓ ${file.name} uploaded`;
+        } else {
+            alert(`Error uploading ${file.name}: ${data.error}`);
+        }
+    } catch (error) {
+        alert(`Error uploading ${file.name}: ${error.message}`);
+    } finally {
+        setTimeout(() => {
+            uploadProgress.style.display = 'none';
+        }, 1000);
+    }
+}
+
+function addFileToList(filename, type) {
+    const fileItem = document.createElement('div');
+    fileItem.className = 'file-item';
+    
+    const icon = type === 'audio' ? '🎵' : type === 'video' ? '🎬' : '🖼️';
+    
+    fileItem.innerHTML = `
+        <span class="file-icon">${icon}</span>
+        <span class="file-name">${filename}</span>
+        <span class="file-type">${type}</span>
+    `;
+    
+    uploadedFiles.appendChild(fileItem);
+}
+
+function clearFiles() {
+    if (confirm('Clear all uploaded files?')) {
+        fetch('/api/session/clear', { method: 'POST' })
+            .then(() => {
+                uploadedFiles.innerHTML = '';
+            });
+    }
+}
+</script>
+{% endblock %}

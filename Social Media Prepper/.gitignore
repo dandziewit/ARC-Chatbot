@@ -41,6 +41,11 @@ logs/
 *.log
 temp/
 tmp/
+uploads/
+output/*/
+scheduler_export/
 
-# Streamlit
-.streamlit/secrets.toml
+# Flask
+instance/
+.webassets-cache
+.env

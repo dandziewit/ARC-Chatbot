@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Social Studio{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>Welcome to Social Studio</h1>
+    <p class="lead">Create stunning social media content in minutes</p>
+    <div class="hero-features">
+        <div class="feature-card">
+            <div class="feature-icon">📁</div>
+            <h3>Upload</h3>
+            <p>Audio, video, and images</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">✨</div>
+            <h3>Auto-Generate</h3>
+            <p>AI-powered captions & hashtags</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">✏️</div>
+            <h3>Edit</h3>
+            <p>Trim, crop, and customize</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">📤</div>
+            <h3>Export</h3>
+            <p>Ready for schedulers</p>
+        </div>
+    </div>
+    <div class="cta-buttons">
+        <a href="{{ url_for('upload_page') }}" class="btn btn-primary btn-large">Get Started</a>
+        <a href="#features" class="btn btn-secondary btn-large">Learn More</a>
+    </div>
+</div>
+
+<section id="features" class="features-section">
+    <h2>Features</h2>
+    <div class="features-grid">
+        <div class="feature-item">
+            <h3>🎵 Audio Processing</h3>
+            <p>Trim and edit audio clips for perfect social media posts</p>
+        </div>
+        <div class="feature-item">
+            <h3>🎬 Video Editing</h3>
+            <p>Crop and resize videos for any platform</p>
+        </div>
+        <div class="feature-item">
+            <h3>🖼️ Image Cropping</h3>
+            <p>Optimize images for Instagram, TikTok, and more</p>
+        </div>
+        <div class="feature-item">
+            <h3>📝 Smart Captions</h3>
+            <p>AI-generated captions tailored to your content</p>
+        </div>
+        <div class="feature-item">
+            <h3>#️⃣ Hashtag Generation</h3>
+            <p>Get relevant hashtags for maximum reach</p>
+        </div>
+        <div class="feature-item">
+            <h3>📊 Scheduler Export</h3>
+            <p>Export to Buffer, Publer, Later, Meta Business Suite</p>
+        </div>
+    </div>
+</section>
+
+<section class="platforms-section">
+    <h2>Supported Platforms</h2>
+    <div class="platforms-grid">
+        <div class="platform-badge">Instagram</div>
+        <div class="platform-badge">TikTok</div>
+        <div class="platform-badge">Facebook</div>
+        <div class="platform-badge">YouTube</div>
+        <div class="platform-badge">Twitter</div>
+    </div>
+</section>
+{% endblock %}

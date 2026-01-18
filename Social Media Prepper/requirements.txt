@@ -1,4 +1,10 @@
-streamlit>=1.28.0
+flask>=2.3.0
+werkzeug>=2.3.0
 pyyaml>=6.0
 pillow>=10.0.0
 python-dateutil>=2.8.0
+pydub>=0.25.1
+moviepy>=1.0.3
+numpy>=1.24.0
+opencv-python-headless>=4.8.0
+ffmpeg-python>=0.2.0
