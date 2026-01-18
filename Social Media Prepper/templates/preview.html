@@ -4,25 +4,49 @@
 
 {% block content %}
 <div class="preview-container">
-    <h1>Preview & Export</h1>
-    <p class="subtitle">Review your content before exporting</p>
+    <h1>Preview & Download</h1>
+    <p class="subtitle">Review and download your processed content</p>
 
     <div class="preview-grid">
         {% if processed_files %}
         <div class="preview-section">
-            <h3>Processed Files</h3>
+            <h3>Your Processed Content</h3>
             {% for file in processed_files %}
             <div class="preview-card">
-                <h4>{{ file.name }}</h4>
-                <p>Type: {{ file.type }}</p>
-                <a href="{{ url_for('download_file', filename=file.name) }}" class="btn btn-sm btn-primary">Download</a>
+                <div class="preview-media">
+                    {% if file.type == 'audio' %}
+                    <div class="audio-preview">
+                        <div class="audio-icon">🎵</div>
+                        <audio controls style="width: 100%; margin-top: 1rem;">
+                            <source src="{{ url_for('preview_file', filename=file.filename) }}" type="audio/mpeg">
+                            Your browser does not support audio playback.
+                        </audio>
+                    </div>
+                    {% elif file.type == 'image' %}
+                    <div class="image-preview">
+                        <img src="{{ url_for('preview_file', filename=file.filename) }}" alt="{{ file.original }}" style="max-width: 100%; border-radius: 8px;">
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="preview-info">
+                    <h4>{{ file.original }}</h4>
+                    <p class="file-meta">Type: {{ file.type | capitalize }}</p>
+                    <a href="{{ url_for('download_file', filename=file.filename) }}" class="btn btn-primary" download>
+                        ⬇ Download {{ file.type | capitalize }}
+                    </a>
+                </div>
             </div>
             {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>No processed files yet. <a href="{{ url_for('editor') }}">Go to editor</a> to process your media.</p>
         </div>
         {% endif %}
 
         <div class="export-section">
-            <h3>Export Settings</h3>
+            <h3>Export for Schedulers</h3>
+            <p class="help-text">Export metadata for social media scheduling tools</p>
             
             <div class="form-group">
                 <label>Scheduler:</label>
@@ -42,21 +66,21 @@
                 </select>
             </div>
 
-            <button onclick="exportContent()" class="btn btn-success btn-large">Export for Scheduler</button>
+            <button onclick="exportContent()" class="btn btn-success btn-large">📤 Export Metadata</button>
         </div>
     </div>
 
     <div class="action-buttons">
-        <a href="{{ url_for('editor') }}" class="btn btn-secondary">Back to Editor</a>
-        <a href="{{ url_for('index') }}" class="btn btn-primary">Start New Project</a>
+        <a href="{{ url_for('editor') }}" class="btn btn-secondary">← Back to Editor</a>
+        <a href="{{ url_for('index') }}" class="btn btn-primary">🏠 Start New Project</a>
     </div>
 </div>
 
 <div id="exportModal" class="modal" style="display: none;">
     <div class="modal-content">
-        <h3>Export Successful!</h3>
+        <h3>✓ Export Successful!</h3>
         <p id="exportMessage">Your content has been exported.</p>
-        <a id="downloadLink" href="#" class="btn btn-primary">Download File</a>
+        <a id="downloadLink" href="#" class="btn btn-primary" download>Download Export File</a>
         <button onclick="closeModal()" class="btn btn-secondary">Close</button>
     </div>
 </div>
@@ -73,7 +97,8 @@ async function exportContent() {
         {
             platform: 'instagram',
             caption: 'Check out this amazing content!',
-            hashtags: '#content #creative #socialmedia'
+            hashtags: '#content #creative #socialmedia',
+            media_type: 'image'
         }
     ];
     
@@ -92,7 +117,7 @@ async function exportContent() {
         
         if (data.success) {
             document.getElementById('exportMessage').textContent = 
-                `Your content has been exported to ${data.filename}`;
+                `Your metadata has been exported to ${data.filename}`;
             document.getElementById('downloadLink').href = 
                 `/download/${data.filename}`;
             document.getElementById('exportModal').style.display = 'flex';

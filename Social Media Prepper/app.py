@@ -38,7 +38,6 @@ export_manager = ExportManager(config_manager)
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {
     'audio': {'mp3', 'wav', 'm4a', 'aac'},
-    'video': {'mp4', 'mov', 'avi', 'mkv'},
     'image': {'jpg', 'jpeg', 'png', 'webp'}
 }
 
@@ -124,37 +123,73 @@ def process_media():
     try:
         if media_type == 'audio':
             # Trim audio
-            start_time = data.get('start_time', 0)
-            duration = data.get('duration', 15)
+            start_time = float(data.get('start_time', 0))
+            duration = float(data.get('duration', 15))
             input_path = Path(file_info['path'])
             output_dir = app.config['OUTPUT_FOLDER']
+            platform = data.get('platform', 'instagram')
             
             output_path = content_processor.clip_audio(
                 input_path,
                 output_dir,
                 start_time,
-                duration
+                duration,
+                platform
             )
             
-            return jsonify({
-                'success': True,
-                'output_path': str(output_path),
-                'filename': output_path.name
-            })
+            if output_path:
+                # Store processed file in session
+                if 'processed_files' not in session:
+                    session['processed_files'] = []
+                
+                session['processed_files'].append({
+                    'filename': output_path.name,
+                    'type': 'audio',
+                    'path': str(output_path),
+                    'original': file_info['original_name']
+                })
+                session.modified = True
+                
+                return jsonify({
+                    'success': True,
+                    'output_path': str(output_path),
+                    'filename': output_path.name
+                })
+            else:
+                return jsonify({'error': 'Failed to process audio'}), 500
         
         elif media_type == 'image':
             # Process image
             input_path = Path(file_info['path'])
-            aspect_ratio = data.get('aspect_ratio', '1:1')
+            platform = data.get('platform', 'instagram')
+            output_dir = app.config['OUTPUT_FOLDER']
             
-            # Basic image processing (you can expand this)
-            output_path = app.config['OUTPUT_FOLDER'] / input_path.name
+            output_path = content_processor.process_image(
+                input_path,
+                output_dir,
+                platform
+            )
             
-            return jsonify({
-                'success': True,
-                'output_path': str(output_path),
-                'filename': output_path.name
-            })
+            if output_path:
+                # Store processed file in session
+                if 'processed_files' not in session:
+                    session['processed_files'] = []
+                
+                session['processed_files'].append({
+                    'filename': output_path.name,
+                    'type': 'image',
+                    'path': str(output_path),
+                    'original': file_info['original_name']
+                })
+                session.modified = True
+                
+                return jsonify({
+                    'success': True,
+                    'output_path': str(output_path),
+                    'filename': output_path.name
+                })
+            else:
+                return jsonify({'error': 'Failed to process image'}), 500
         
         else:
             return jsonify({'error': 'Unsupported media type'}), 400
@@ -231,6 +266,25 @@ def download_file(filename):
         export_path = Path('scheduler_export') / filename
         if export_path.exists():
             return send_file(export_path, as_attachment=True)
+        
+        return jsonify({'error': 'File not found'}), 404
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/preview/<path:filename>')
+def preview_file(filename):
+    """Preview file (serve without download)"""
+    try:
+        # Check in output folder
+        file_path = app.config['OUTPUT_FOLDER'] / filename
+        if file_path.exists():
+            return send_file(file_path)
+        
+        # Check in uploads folder
+        upload_path = app.config['UPLOAD_FOLDER'] / filename
+        if upload_path.exists():
+            return send_file(upload_path)
         
         return jsonify({'error': 'File not found'}), 404
     

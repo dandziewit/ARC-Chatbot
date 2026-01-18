@@ -1,6 +1,6 @@
 ﻿"""
 Content Processor
-Handles image, video, and audio processing for social media content
+Handles image and audio processing for social media content
 """
 
 import os
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class ContentProcessor:
-    """Processes images, videos, and audio for social media platforms"""
+    """Processes images and audio for social media platforms"""
     
     def __init__(self, config_manager):
         """
@@ -38,7 +38,7 @@ class ContentProcessor:
                          capture_output=True, check=True)
             return True
         except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.warning("FFmpeg not found. Audio/video processing will be limited.")
+            logger.warning("FFmpeg not found. Audio processing will be limited.")
             return False
     
     def process_audio(self, audio_path: Path, output_dir: Path, 
@@ -98,152 +98,6 @@ class ContentProcessor:
             
         except Exception as e:
             logger.error(f"Error processing audio {audio_path}: {e}")
-            return None
-    
-    def create_video_from_audio(self, audio_path: Path, output_dir: Path, 
-                                platform: str = 'instagram',
-                                background_image: Optional[Path] = None) -> Optional[Path]:
-        """
-        Create a video with audio and static/animated background
-        
-        Args:
-            audio_path: Path to audio file
-            output_dir: Directory to save video
-            platform: Target platform for dimensions
-            background_image: Optional background image
-            
-        Returns:
-            Path to created video or None if failed
-        """
-        if not self.check_ffmpeg():
-            logger.error("FFmpeg is required for video creation")
-            return None
-        
-        try:
-            # Get platform dimensions
-            platform_config = self.config.get_platform_config(platform)
-            width = platform_config.get('video_dimensions', {}).get('width', 1080)
-            height = platform_config.get('video_dimensions', {}).get('height', 1920)
-            
-            # Get video settings
-            video_config = self.config.get_processing_config('video')
-            fps = video_config.get('fps', 30)
-            video_codec = video_config.get('video_codec', 'libx264')
-            audio_codec = video_config.get('audio_codec', 'aac')
-            
-            # Create output filename
-            output_filename = f"{audio_path.stem}_{platform}_video.mp4"
-            output_path = output_dir / output_filename
-            
-            # Ensure output directory exists
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            if background_image and background_image.exists():
-                # Create video from image + audio
-                cmd = [
-                    'ffmpeg', '-y',
-                    '-loop', '1',
-                    '-i', str(background_image),
-                    '-i', str(audio_path),
-                    '-c:v', video_codec,
-                    '-c:a', audio_codec,
-                    '-b:a', '192k',
-                    '-vf', f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}',
-                    '-shortest',
-                    '-r', str(fps),
-                    '-pix_fmt', 'yuv420p',
-                    str(output_path)
-                ]
-            else:
-                # Create video with solid color background
-                cmd = [
-                    'ffmpeg', '-y',
-                    '-f', 'lavfi',
-                    '-i', f'color=c=black:s={width}x{height}:r={fps}',
-                    '-i', str(audio_path),
-                    '-c:v', video_codec,
-                    '-c:a', audio_codec,
-                    '-b:a', '192k',
-                    '-shortest',
-                    '-pix_fmt', 'yuv420p',
-                    str(output_path)
-                ]
-            
-            logger.info(f"Creating video for {platform}: {audio_path.name}")
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
-            if result.returncode != 0:
-                logger.error(f"FFmpeg error: {result.stderr}")
-                return None
-            
-            logger.info(f"Video created: {output_path}")
-            return output_path
-            
-        except Exception as e:
-            logger.error(f"Error creating video from audio {audio_path}: {e}")
-            return None
-    
-    def process_video(self, video_path: Path, output_dir: Path, 
-                     platform: str = 'instagram') -> Optional[Path]:
-        """
-        Process video file (resize, clip, format conversion)
-        
-        Args:
-            video_path: Path to input video
-            output_dir: Directory to save processed video
-            platform: Target platform
-            
-        Returns:
-            Path to processed video or None if failed
-        """
-        if not self.check_ffmpeg():
-            logger.error("FFmpeg is required for video processing")
-            return None
-        
-        try:
-            # Get platform dimensions
-            platform_config = self.config.get_platform_config(platform)
-            width = platform_config.get('video_dimensions', {}).get('width', 1080)
-            height = platform_config.get('video_dimensions', {}).get('height', 1920)
-            
-            # Get video settings
-            video_config = self.config.get_processing_config('video')
-            fps = video_config.get('fps', 30)
-            video_codec = video_config.get('video_codec', 'libx264')
-            audio_codec = video_config.get('audio_codec', 'aac')
-            
-            # Create output filename
-            output_filename = f"{video_path.stem}_{platform}.mp4"
-            output_path = output_dir / output_filename
-            
-            # Ensure output directory exists
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # FFmpeg command to process video
-            cmd = [
-                'ffmpeg', '-y',
-                '-i', str(video_path),
-                '-c:v', video_codec,
-                '-c:a', audio_codec,
-                '-b:a', '192k',
-                '-vf', f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}',
-                '-r', str(fps),
-                '-pix_fmt', 'yuv420p',
-                str(output_path)
-            ]
-            
-            logger.info(f"Processing video for {platform}: {video_path.name}")
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
-            if result.returncode != 0:
-                logger.error(f"FFmpeg error: {result.stderr}")
-                return None
-            
-            logger.info(f"Video processed: {output_path}")
-            return output_path
-            
-        except Exception as e:
-            logger.error(f"Error processing video {video_path}: {e}")
             return None
     
     def process_image(self, image_path: Path, output_dir: Path, 
@@ -335,98 +189,6 @@ class ContentProcessor:
             
         except Exception as e:
             logger.error(f"Error processing image {image_path}: {e}")
-            return None
-    
-    def clip_video(self, video_path: Path, output_dir: Path, 
-                   start_time: float, duration: float,
-                   platform: str = 'instagram',
-                   crop_preset: str = '9:16',
-                   text_overlay: Optional[str] = None,
-                   text_color: str = '#FFFFFF') -> Optional[Path]:
-        """
-        Clip video with start/end times, crop, and optional text overlay
-        
-        Args:
-            video_path: Path to input video
-            output_dir: Directory to save clipped video
-            start_time: Start time in seconds
-            duration: Duration in seconds
-            platform: Target platform
-            crop_preset: Crop ratio (9:16, 1:1, 4:5, 16:9)
-            text_overlay: Optional text to overlay
-            text_color: Text color in hex format
-            
-        Returns:
-            Path to clipped video or None if failed
-        """
-        if not self.check_ffmpeg():
-            logger.error("FFmpeg is required for video clipping")
-            return None
-        
-        try:
-            # Get platform dimensions based on crop preset
-            dimensions_map = {
-                '9:16': {'width': 1080, 'height': 1920},
-                '1:1': {'width': 1080, 'height': 1080},
-                '4:5': {'width': 1080, 'height': 1350},
-                '16:9': {'width': 1920, 'height': 1080}
-            }
-            
-            dims = dimensions_map.get(crop_preset, {'width': 1080, 'height': 1920})
-            width = dims['width']
-            height = dims['height']
-            
-            # Create output filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_filename = f"{video_path.stem}_{platform}_{timestamp}.mp4"
-            output_path = output_dir / output_filename
-            
-            # Ensure output directory exists
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Build FFmpeg filter chain
-            vf_filters = [
-                f'scale={width}:{height}:force_original_aspect_ratio=increase',
-                f'crop={width}:{height}'
-            ]
-            
-            # Add text overlay if specified
-            if text_overlay:
-                # Escape special characters for FFmpeg
-                escaped_text = text_overlay.replace("'", "'\\\\\\''").replace(":", "\\:")
-                vf_filters.append(
-                    f"drawtext=text='{escaped_text}':"
-                    f"fontsize=48:fontcolor={text_color}:x=(w-text_w)/2:y=(h-text_h)*0.8"
-                )
-            
-            # FFmpeg command to clip and process video
-            cmd = [
-                'ffmpeg', '-y',
-                '-ss', str(start_time),
-                '-i', str(video_path),
-                '-t', str(duration),
-                '-c:v', 'libx264',
-                '-c:a', 'aac',
-                '-b:a', '192k',
-                '-vf', ','.join(vf_filters),
-                '-r', '30',
-                '-pix_fmt', 'yuv420p',
-                '-preset', 'medium',
-                str(output_path)
-            ]
-            
-            logger.info(f"Clipping video: {video_path.name} ({start_time}s, {duration}s, {crop_preset})")
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
-            if result.returncode != 0:
-                logger.error(f"FFmpeg error: {result.stderr}")
-                return None
-            
-            logger.info(f"Video clipped: {output_path}")
-            return output_path
-            
-        except Exception as e:
-            logger.error(f"Error clipping video {video_path}: {e}")
             return None
     
     def clip_audio(self, audio_path: Path, output_dir: Path,
@@ -571,7 +333,7 @@ class ContentProcessor:
         Get list of input files for a content type
         
         Args:
-            content_type: 'music', 'images', or 'videos'
+            content_type: 'music' or 'images'
             
         Returns:
             List of file paths
@@ -585,8 +347,7 @@ class ContentProcessor:
         # Define supported extensions
         extensions = {
             'music': ['.mp3', '.wav', '.m4a', '.flac', '.aac'],
-            'images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'],
-            'videos': ['.mp4', '.mov', '.avi', '.mkv', '.webm']
+            'images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
         }
         
         supported_ext = extensions.get(content_type, [])

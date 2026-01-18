@@ -5,13 +5,23 @@
 {% block content %}
 <div class="upload-container">
     <h1>Upload Media</h1>
-    <p class="subtitle">Upload your audio, video, or image files</p>
+    <p class="subtitle">Choose your content type and upload files</p>
+
+    <!-- Media Type Selection -->
+    <div class="media-type-selector">
+        <button class="media-type-btn active" data-type="audio" onclick="selectMediaType('audio')">
+            🎵 Audio
+        </button>
+        <button class="media-type-btn" data-type="image" onclick="selectMediaType('image')">
+            🖼️ Image
+        </button>
+    </div>
 
     <div class="upload-zone" id="uploadZone">
-        <div class="upload-icon">📁</div>
-        <p>Drag & drop files here or click to browse</p>
-        <p class="file-types">Supported: MP3, WAV, MP4, JPG, PNG</p>
-        <input type="file" id="fileInput" multiple accept="audio/*,video/*,image/*" style="display: none;">
+        <div class="upload-icon" id="uploadIcon">🎵</div>
+        <p id="uploadText">Drag & drop audio files here or click to browse</p>
+        <p class="file-types" id="fileTypes">Supported: MP3, WAV, M4A, AAC</p>
+        <input type="file" id="fileInput" accept="audio/*" style="display: none;">
     </div>
 
     <div id="uploadedFiles" class="uploaded-files">
@@ -40,6 +50,37 @@ const uploadedFiles = document.getElementById('uploadedFiles');
 const uploadProgress = document.getElementById('uploadProgress');
 const progressFill = document.getElementById('progressFill');
 const progressText = document.getElementById('progressText');
+const uploadIcon = document.getElementById('uploadIcon');
+const uploadText = document.getElementById('uploadText');
+const fileTypes = document.getElementById('fileTypes');
+
+let currentMediaType = 'audio';
+
+// Media type selection
+function selectMediaType(type) {
+    currentMediaType = type;
+    
+    // Update buttons
+    document.querySelectorAll('.media-type-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.type === type) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Update upload zone
+    if (type === 'audio') {
+        uploadIcon.textContent = '🎵';
+        uploadText.textContent = 'Drag & drop audio files here or click to browse';
+        fileTypes.textContent = 'Supported: MP3, WAV, M4A, AAC';
+        fileInput.accept = 'audio/*';
+    } else if (type === 'image') {
+        uploadIcon.textContent = '🖼️';
+        uploadText.textContent = 'Drag & drop images here or click to browse';
+        fileTypes.textContent = 'Supported: JPG, PNG, WEBP';
+        fileInput.accept = 'image/*';
+    }
+}
 
 // Click to upload
 uploadZone.addEventListener('click', () => fileInput.click());
