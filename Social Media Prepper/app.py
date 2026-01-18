@@ -105,13 +105,31 @@ def upload_file():
     if 'uploaded_files' not in session:
         session['uploaded_files'] = []
     
+    # Generate caption and hashtags for the file
+    try:
+        content_type = 'music' if file_type == 'audio' else 'image'
+        caption = caption_generator.generate_caption(
+            content_type=content_type,
+            platform='instagram',
+            filename=filename,
+            use_ai=False
+        )
+        hashtags = caption_generator.generate_hashtags(file_type, 'instagram')
+    except Exception as e:
+        logger.warning(f"Could not generate caption/hashtags: {e}")
+        caption = f"Check out this {file_type}!"
+        hashtags = []
+    
     # Add file info to session
     file_info = {
         'filename': safe_filename,
         'original_name': filename,
         'type': file_type,
         'path': str(upload_path),
-        'subfolder': subfolder
+        'subfolder': subfolder,
+        'caption': caption,
+        'hashtags': hashtags,
+        'edits': {}
     }
     
     session['uploaded_files'].append(file_info)
@@ -122,6 +140,8 @@ def upload_file():
         'filename': safe_filename,
         'original_name': filename,
         'type': file_type,
+        'caption': caption,
+        'hashtags': hashtags,
         'files': session['uploaded_files']
     })
 
@@ -223,8 +243,16 @@ def generate_content():
     media_type = data.get('media_type', 'image')
     
     try:
-        # Generate caption
-        caption = caption_generator.generate_caption(platform)
+        # Map media type to content type for caption generator
+        content_type = 'music' if media_type == 'audio' else 'image'
+        
+        # Generate caption with all required parameters
+        caption = caption_generator.generate_caption(
+            content_type=content_type,
+            platform=platform,
+            filename='',
+            use_ai=False
+        )
         
         # Generate hashtags
         hashtags = caption_generator.generate_hashtags(media_type, platform)
@@ -236,6 +264,7 @@ def generate_content():
         })
     
     except Exception as e:
+        logger.error(f"Caption generation error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/preview')
