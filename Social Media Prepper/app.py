@@ -250,13 +250,32 @@ def preview():
 
 @app.route('/api/export', methods=['POST'])
 def export_content():
-    """Export content for schedulers"""
+    """Export content for schedulers with captions and hashtags from session"""
     data = request.json
-    posts = data.get('posts', [])
     scheduler = data.get('scheduler', 'buffer')
     format_type = data.get('format', 'csv')
     
     try:
+        # Get uploaded files from session with captions and hashtags
+        uploaded_files = session.get('uploaded_files', [])
+        
+        if not uploaded_files:
+            return jsonify({'error': 'No files uploaded. Please upload files first.'}), 400
+        
+        # Convert session files to posts format for export
+        posts = []
+        for file_info in uploaded_files:
+            post = {
+                'platform': 'instagram',  # Default platform
+                'caption': file_info.get('caption', ''),
+                'hashtags': ' '.join(file_info.get('hashtags', [])),
+                'media_type': file_info.get('type', 'image'),
+                'filename': file_info.get('filename', ''),
+                'original_name': file_info.get('original_name', '')
+            }
+            posts.append(post)
+        
+        # Export using the export manager
         if format_type == 'csv':
             output_file = export_manager.export_to_csv(posts, scheduler)
         else:
@@ -265,10 +284,12 @@ def export_content():
         return jsonify({
             'success': True,
             'file': str(output_file),
-            'filename': output_file.name
+            'filename': output_file.name,
+            'post_count': len(posts)
         })
     
     except Exception as e:
+        logger.error(f"Export error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/export-zip', methods=['POST'])

@@ -2,51 +2,68 @@
 
 {% block title %}Preview - Social Studio{% endblock %}
 
+{% block extra_css %}
+<style>
+.caption-display {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #007bff;
+}
+
+.caption-display strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #495057;
+}
+
+.caption-display p {
+    margin: 0;
+    line-height: 1.6;
+    color: #212529;
+}
+
+.hashtags-display {
+    margin: 1rem 0;
+}
+
+.hashtags-display strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #495057;
+}
+
+.hashtags-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.hashtag-badge {
+    display: inline-block;
+    padding: 0.4rem 0.8rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 20px;
+    font-size: 0.85rem;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="preview-container">
     <h1>Preview & Download</h1>
-    <p class="subtitle">Review and download your processed content</p>
+    <p class="subtitle">Review and download your processed content with captions & hashtags</p>
 
     <div class="preview-grid">
-        {% if processed_files %}
-        <div class="preview-section">
-            <h3>Your Processed Content</h3>
-            {% for file in processed_files %}
-            <div class="preview-card">
-                <div class="preview-media">
-                    {% if file.type == 'audio' %}
-                    <div class="audio-preview">
-                        <div class="audio-icon">🎵</div>
-                        <audio controls style="width: 100%; margin-top: 1rem;">
-                            <source src="{{ url_for('preview_file', filename=file.filename) }}" type="audio/mpeg">
-                            Your browser does not support audio playback.
-                        </audio>
-                    </div>
-                    {% elif file.type == 'image' %}
-                    <div class="image-preview">
-                        <img src="{{ url_for('preview_file', filename=file.filename) }}" alt="{{ file.original }}" style="max-width: 100%; border-radius: 8px;">
-                    </div>
-                    {% endif %}
-                </div>
-                <div class="preview-info">
-                    <h4>{{ file.original }}</h4>
-                    <p class="file-meta">Type: {{ file.type | capitalize }}</p>
-                    <a href="{{ url_for('download_file', filename=file.filename) }}" class="btn btn-primary" download>
-                        ⬇ Download {{ file.type | capitalize }}
-                    </a>
-                </div>
-            </div>
-            {% endfor %}
+        <div class="preview-section" id="previewSection">
+            <!-- Files will be loaded here via JavaScript -->
         </div>
-        {% else %}
-        <div class="empty-state">
-            <p>No processed files yet. <a href="{{ url_for('editor') }}">Go to editor</a> to process your media.</p>
-        </div>
-        {% endif %}
 
         <div class="export-section">
             <h3>Export for Schedulers</h3>
-            <p class="help-text">Export metadata for social media scheduling tools</p>
+            <p class="help-text">Export with captions & hashtags for social media scheduling tools</p>
             
             <div class="form-group">
                 <label>Scheduler:</label>
@@ -94,26 +111,112 @@
 
 {% block extra_js %}
 <script>
+// Load files on page load
+window.addEventListener('DOMContentLoaded', async () => {
+    await loadFiles();
+});
+
+async function loadFiles() {
+    try {
+        const response = await fetch('/api/session/files');
+        const data = await response.json();
+        
+        const files = data.files || [];
+        const previewSection = document.getElementById('previewSection');
+        
+        if (files.length === 0) {
+            previewSection.innerHTML = `
+                <div class="empty-state">
+                    <h3>📭 No files uploaded yet</h3>
+                    <p>Upload files to see them here with captions and hashtags</p>
+                    <a href="/upload" class="btn btn-primary">Upload Files</a>
+                </div>
+            `;
+            return;
+        }
+        
+        previewSection.innerHTML = '<h3>Your Content</h3>';
+        
+        files.forEach(file => {
+            const card = document.createElement('div');
+            card.className = 'preview-card';
+            
+            const icon = file.type === 'audio' ? '🎵' : '🖼️';
+            const hashtags = file.hashtags || [];
+            const hashtagsHTML = hashtags.map(tag => `<span class="hashtag-badge">${tag}</span>`).join('');
+            
+            let mediaHTML = '';
+            if (file.type === 'audio') {
+                mediaHTML = `
+                    <div class="audio-preview">
+                        <div class="audio-icon">${icon}</div>
+                        <audio controls style="width: 100%; margin-top: 1rem;">
+                            <source src="/api/preview/${file.filename}" type="audio/mpeg">
+                            Your browser does not support audio playback.
+                        </audio>
+                    </div>
+                `;
+            } else {
+                mediaHTML = `
+                    <div class="image-preview">
+                        <img src="/api/preview/${file.filename}" alt="${file.original_name}" 
+                             style="max-width: 100%; border-radius: 8px;">
+                    </div>
+                `;
+            }
+            
+            card.innerHTML = `
+                <div class="preview-media">
+                    ${mediaHTML}
+                </div>
+                <div class="preview-info">
+                    <h4>${icon} ${file.original_name || file.filename}</h4>
+                    <p class="file-meta">Type: ${file.type.charAt(0).toUpperCase() + file.type.slice(1)}</p>
+                    
+                    ${file.caption ? `
+                        <div class="caption-display">
+                            <strong>📝 Caption:</strong>
+                            <p>${file.caption}</p>
+                        </div>
+                    ` : ''}
+                    
+                    ${hashtags.length > 0 ? `
+                        <div class="hashtags-display">
+                            <strong>🏷️ Hashtags:</strong>
+                            <div class="hashtags-list">
+                                ${hashtagsHTML}
+                            </div>
+                        </div>
+                    ` : ''}
+                    
+                    <a href="/download/${file.filename}" class="btn btn-primary" download>
+                        ⬇ Download ${file.type.charAt(0).toUpperCase() + file.type.slice(1)}
+                    </a>
+                </div>
+            `;
+            
+            previewSection.appendChild(card);
+        });
+    } catch (error) {
+        console.error('Error loading files:', error);
+        document.getElementById('previewSection').innerHTML = `
+            <div class="empty-state">
+                <p>Error loading files: ${error.message}</p>
+            </div>
+        `;
+    }
+}
+
 async function exportContent() {
     const scheduler = document.getElementById('schedulerSelect').value;
     const format = document.getElementById('formatSelect').value;
     
-    // Sample posts data - in a real app, this would come from session/state
-    const posts = [
-        {
-            platform: 'instagram',
-            caption: 'Check out this amazing content!',
-            hashtags: '#content #creative #socialmedia',
-            media_type: 'image'
-        }
-    ];
-    
     try {
+        // Backend will fetch captions/hashtags from session automatically
         const response = await fetch('/api/export', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                posts: posts,
                 scheduler: scheduler,
                 format: format
             })
@@ -122,8 +225,9 @@ async function exportContent() {
         const data = await response.json();
         
         if (data.success) {
+            const postCount = data.post_count || 0;
             document.getElementById('exportMessage').textContent = 
-                `Your metadata has been exported to ${data.filename}`;
+                `Successfully exported ${postCount} post${postCount !== 1 ? 's' : ''} with captions and hashtags to ${data.filename}`;
             document.getElementById('downloadLink').href = 
                 `/download/${data.filename}`;
             document.getElementById('exportModal').style.display = 'flex';
