@@ -7,7 +7,7 @@
     <h1>Media Editor</h1>
     <p class="subtitle">Edit and customize your content</p>
 
-    {% if files %}
+    {% if files and files|length > 0 %}
     <div class="editor-workspace">
         <div class="files-panel">
             <h3>Your Files</h3>

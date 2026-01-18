@@ -18,14 +18,16 @@ from social_studio.caption_generator import CaptionGenerator
 from social_studio.export_manager import ExportManager
 
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(16)
+app.secret_key = 'social-studio-secret-key-2026'  # Fixed secret key for session persistence
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 app.config['UPLOAD_FOLDER'] = Path('uploads')
 app.config['OUTPUT_FOLDER'] = Path('output')
 app.config['SESSION_TYPE'] = 'filesystem'
 
-# Create required directories
+# Create required directories with subdirectories
 app.config['UPLOAD_FOLDER'].mkdir(exist_ok=True)
+(app.config['UPLOAD_FOLDER'] / 'audio').mkdir(exist_ok=True)
+(app.config['UPLOAD_FOLDER'] / 'images').mkdir(exist_ok=True)
 app.config['OUTPUT_FOLDER'].mkdir(exist_ok=True)
 
 # Initialize Social Studio components
@@ -66,45 +68,61 @@ def upload_page():
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
-    """Handle file upload"""
+    """Handle file upload with proper session persistence"""
     if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
+        return jsonify({'success': False, 'error': 'No file provided'}), 400
     
     file = request.files['file']
     if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
+        return jsonify({'success': False, 'error': 'No file selected'}), 400
     
-    # Determine file type
-    file_type = get_file_type(file.filename)
-    if not file_type:
-        return jsonify({'error': 'Unsupported file type'}), 400
+    # Get file extension
+    if '.' not in file.filename:
+        return jsonify({'success': False, 'error': 'File has no extension'}), 400
     
-    if not allowed_file(file.filename, file_type):
-        return jsonify({'error': f'Invalid {file_type} file'}), 400
+    ext = file.filename.rsplit('.', 1)[1].lower()
     
-    # Save file
+    # Determine file type and folder
+    if ext in ['mp3', 'wav', 'm4a', 'aac']:
+        file_type = 'audio'
+        subfolder = 'audio'
+    elif ext in ['jpg', 'jpeg', 'png', 'webp']:
+        file_type = 'image'
+        subfolder = 'images'
+    else:
+        return jsonify({'success': False, 'error': f'Unsupported file type: .{ext}'}), 400
+    
+    # Save file with timestamp to avoid conflicts
     filename = secure_filename(file.filename)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     safe_filename = f"{timestamp}_{filename}"
-    filepath = app.config['UPLOAD_FOLDER'] / safe_filename
-    file.save(filepath)
     
-    # Store in session
+    # Save to appropriate subfolder
+    upload_path = app.config['UPLOAD_FOLDER'] / subfolder / safe_filename
+    file.save(upload_path)
+    
+    # Initialize session if needed
     if 'uploaded_files' not in session:
         session['uploaded_files'] = []
     
-    session['uploaded_files'].append({
+    # Add file info to session
+    file_info = {
         'filename': safe_filename,
         'original_name': filename,
         'type': file_type,
-        'path': str(filepath)
-    })
+        'path': str(upload_path),
+        'subfolder': subfolder
+    }
+    
+    session['uploaded_files'].append(file_info)
     session.modified = True
     
     return jsonify({
         'success': True,
         'filename': safe_filename,
-        'type': file_type
+        'original_name': filename,
+        'type': file_type,
+        'files': session['uploaded_files']
     })
 
 @app.route('/editor')
@@ -262,6 +280,16 @@ def download_file(filename):
         if file_path.exists():
             return send_file(file_path, as_attachment=True)
         
+        # Check in uploads/audio folder
+        audio_path = app.config['UPLOAD_FOLDER'] / 'audio' / filename
+        if audio_path.exists():
+            return send_file(audio_path, as_attachment=True)
+        
+        # Check in uploads/images folder
+        image_path = app.config['UPLOAD_FOLDER'] / 'images' / filename
+        if image_path.exists():
+            return send_file(image_path, as_attachment=True)
+        
         # Check in scheduler export folder
         export_path = Path('scheduler_export') / filename
         if export_path.exists():
@@ -281,7 +309,17 @@ def preview_file(filename):
         if file_path.exists():
             return send_file(file_path)
         
-        # Check in uploads folder
+        # Check in uploads folder (audio subfolder)
+        audio_path = app.config['UPLOAD_FOLDER'] / 'audio' / filename
+        if audio_path.exists():
+            return send_file(audio_path)
+        
+        # Check in uploads folder (images subfolder)
+        image_path = app.config['UPLOAD_FOLDER'] / 'images' / filename
+        if image_path.exists():
+            return send_file(image_path)
+        
+        # Check in main uploads folder (legacy)
         upload_path = app.config['UPLOAD_FOLDER'] / filename
         if upload_path.exists():
             return send_file(upload_path)
@@ -308,6 +346,12 @@ def clear_session():
     """Clear session data"""
     session.clear()
     return jsonify({'success': True})
+
+@app.route('/api/session/files', methods=['GET'])
+def get_session_files():
+    """Get uploaded files from session"""
+    uploaded_files = session.get('uploaded_files', [])
+    return jsonify({'success': True, 'files': uploaded_files})
 
 @app.errorhandler(413)
 def request_entity_too_large(error):

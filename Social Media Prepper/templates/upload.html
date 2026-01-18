@@ -30,7 +30,7 @@
 
     <div class="action-buttons">
         <button onclick="clearFiles()" class="btn btn-secondary">Clear All</button>
-        <a href="{{ url_for('editor') }}" class="btn btn-primary">Continue to Editor</a>
+        <a href="{{ url_for('editor') }}" class="btn btn-primary" id="continueBtn">Continue to Editor (<span id="fileCount">0</span>)</a>
     </div>
 </div>
 
@@ -55,6 +55,24 @@ const uploadText = document.getElementById('uploadText');
 const fileTypes = document.getElementById('fileTypes');
 
 let currentMediaType = 'audio';
+let uploadedFilesList = [];
+
+// Load existing files from session on page load
+window.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const response = await fetch('/api/session/files');
+        const data = await response.json();
+        if (data.files) {
+            uploadedFilesList = data.files;
+            data.files.forEach(file => {
+                addFileToList(file.original_name || file.filename, file.type);
+            });
+            updateFileCount();
+        }
+    } catch (error) {
+        console.log('No existing files in session');
+    }
+});
 
 // Media type selection
 function selectMediaType(type) {
@@ -128,7 +146,9 @@ async function uploadFile(file) {
         const data = await response.json();
 
         if (data.success) {
+            uploadedFilesList.push(data);
             addFileToList(file.name, data.type);
+            updateFileCount();
             progressText.textContent = `✓ ${file.name} uploaded`;
         } else {
             alert(`Error uploading ${file.name}: ${data.error}`);
@@ -140,6 +160,12 @@ async function uploadFile(file) {
             uploadProgress.style.display = 'none';
         }, 1000);
     }
+}
+
+function updateFileCount() {
+    const count = uploadedFilesList.length;
+    document.getElementById('fileCount').textContent = count;
+    document.getElementById('continueBtn').style.display = count > 0 ? 'inline-block' : 'none';
 }
 
 function addFileToList(filename, type) {
@@ -162,6 +188,8 @@ function clearFiles() {
         fetch('/api/session/clear', { method: 'POST' })
             .then(() => {
                 uploadedFiles.innerHTML = '';
+                uploadedFilesList = [];
+                updateFileCount();
             });
     }
 }
