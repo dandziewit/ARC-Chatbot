@@ -1,60 +1,135 @@
-# ARC Chatbot
+ARC – Adaptive Response Chatbot
 
-ARC is a modular, interview-ready chatbot project built in Python. It demonstrates a complete conversational pipeline: intent detection, memory, knowledge lookup, response strategy, personality modulation, confidence scoring, and proactive prompts. The system is intentionally lightweight (regex and rules) so the full logic is transparent and easy to explain.
+What it is:
+I built ARC to explore what chatbots are truly capable of. Instead of just using pre-built APIs, I wanted to design the whole pipeline myself — from detecting emotions and understanding intent, to remembering conversations and explaining concepts. ARC isn’t just a bot that responds; it tries to think, adapt, and learn with every interaction.
 
-## Features
+Key Features
+1. Emotion Detection
 
-- Intent detection with regex-based patterns
-- Emotion detection and tone adaptation
-- Multi-turn memory and topic tracking
-- Knowledge and reasoning engine (facts + math)
-- Response strategy selection with loop prevention
-- Personality engine with persistence across turns
-- Confidence metrics with exponential decay
-- Proactive prompts when conversation stalls
-- Teaching system with multi-level explanations
-- CLI chat loop (easy to test and demo)
+ARC can pick up on your mood. It scans messages for emotional cues like sadness, happiness, stress, or excitement and adjusts its responses accordingly.
+Example:
 
-## Project Structure
+“I’m feeling stressed” → ARC responds empathetically
 
-- arc.py: All chatbot logic and the main loop
+“I’m so happy!” → ARC celebrates with you
 
-## Requirements
+2. Intent Understanding
 
-- Python 3.8+
+Every message is analyzed to figure out what you want:
 
-## Quick Start
+Questions → gets you clear answers
 
-1. Open a terminal in the project folder
-2. Run the chatbot:
+Factual requests → taps its knowledge base
 
-```bash
-python arc.py
-```
+Emotional expressions → responds with empathy
 
-3. Type your message and press Enter
-4. Type "exit" to quit
+Uncertainty → asks clarifying questions
 
-## How the Pipeline Works
+Topic shifts → smoothly changes the subject
 
-ARC processes each message in a consistent order:
+Continuations → keeps track of follow-ups
 
-1. Detect emotion
-2. Detect intent
-3. Build context from memory
-4. Select response strategy
-5. Generate response using knowledge/memory
-6. Adapt tone and personality
-7. Update memory
-8. Return the response
+This lets ARC respond in a way that feels natural and context-aware.
 
-This makes the code easy to walk through and explain in interviews.
+3. Memory & Context
 
-## Notes
+ARC remembers your past conversations. It tracks:
 
-- The project is deliberately rule-based (no external NLP libraries) so the behavior is deterministic and easy to reason about.
-- Personality and learning systems are designed for clarity over complexity.
+What you talked about
 
-## License
+Your emotional trends
 
-MIT
+Corrections and preferences
+
+How you like explanations (simple, step-by-step, or advanced)
+
+This means multi-turn conversations feel coherent, and ARC can tailor responses based on what it “knows” about you.
+
+4. Knowledge & Reasoning
+
+ARC has a built-in knowledge base and can:
+
+Answer factual questions
+
+Solve math problems step-by-step
+
+Explain concepts at beginner, intermediate, or advanced levels
+
+Reference previous topics in the conversation
+
+Example:
+
+User: “Explain gravity.”
+
+Beginner → “Gravity is like an invisible force that pulls things together.”
+
+Advanced → “Gravity is spacetime curvature caused by mass-energy, per general relativity.”
+
+5. Personality
+
+ARC can adopt different personalities to make conversations feel more natural: playful, serious, sarcastic, calm, inquisitive, or cheerful. It keeps a personality for a few turns before switching to keep things fresh.
+
+Example:
+
+Playful: “Aha! Gravity is basically Earth’s way of saying ‘hey, you belong here!’ 😄”
+
+Serious: “Gravity is a fundamental force that governs the motion of objects with mass.”
+
+6. Learning & Adaptation
+
+ARC learns from your feedback. If you say:
+
+“Explain simply” → ARC remembers to simplify future answers
+
+“I’m a beginner” → ARC adjusts difficulty
+
+Corrections → ARC learns from them
+
+It’s like having a tutor that adapts to how you want to learn.
+
+How it Works
+
+Think of ARC like a small factory:
+
+Reads your input
+
+Detects emotion
+
+Figures out your intent
+
+Builds context from memory
+
+Picks a response strategy
+
+Generates the response
+
+Adjusts tone based on personality
+
+Updates memory
+
+Outputs the final message
+
+Every turn is an assembly line that keeps ARC responsive, consistent, and adaptive.
+
+Why I Built It
+
+I wanted to see how far I could take chatbot design without relying on external AI APIs. ARC is my playground for:
+
+Experimenting with intent and emotion detection
+
+Testing memory and context handling
+
+Exploring adaptive teaching and explanations
+
+Learning how personality affects conversation
+
+It’s as much a learning tool for me as it is a chatbot.
+
+
+<img width="1221" height="446" alt="Screenshot 2026-02-28 185431" src="https://github.com/user-attachments/assets/ef51d52f-e6d0-4478-beed-457cc321cda1" />
+
+<img width="1479" height="510" alt="Screenshot 2026-02-28 185616" src="https://github.com/user-attachments/assets/7a0d81ec-3790-4ecf-b731-29ab5d99ae6b" />
+
+
+
+
