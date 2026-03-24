@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: arc-chatbot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-backend.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: ARC_ENV
+        value: production
+      - key: ARC_HOST
+        value: 0.0.0.0
+      - key: ARC_PORT
+        value: 10000
+      - key: ARC_USE_REDIS_SESSIONS
+        value: false
+      - key: ARC_USE_POSTGRES_MEMORY
+        value: false
+      - key: ARC_ENABLE_TOOL_ROUTER
+        value: true
+      - key: ARC_ENABLE_CRISIS_GUARDRAILS
+        value: true
+      - key: ARC_RATE_LIMIT_PER_MINUTE
+        value: 120

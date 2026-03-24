@@ -1,135 +1,271 @@
-ARC – Adaptive Response Chatbot
+# ARC Chatbot
 
-What it is:
-I built ARC to explore what chatbots are truly capable of. Instead of just using pre-built APIs, I wanted to design the whole pipeline myself — from detecting emotions and understanding intent, to remembering conversations and explaining concepts. ARC isn’t just a bot that responds; it tries to think, adapt, and learn with every interaction.
+ARC is a modular, interview-ready chatbot project built in Python. It demonstrates a complete conversational pipeline: intent detection, memory, knowledge lookup, response strategy, personality modulation, confidence scoring, and proactive prompts. The system is intentionally lightweight (regex and rules) so the full logic is transparent and easy to explain.
 
-Key Features
-1. Emotion Detection
+## Features
 
-ARC can pick up on your mood. It scans messages for emotional cues like sadness, happiness, stress, or excitement and adjusts its responses accordingly.
-Example:
+- Intent detection with regex-based patterns
+- Emotion detection and tone adaptation
+- Multi-turn memory and topic tracking
+- Knowledge and reasoning engine (facts + math)
+- Response strategy selection with loop prevention
+- Personality engine with persistence across turns
+- Confidence metrics with exponential decay
+- Proactive prompts when conversation stalls
+- Teaching system with multi-level explanations
+- CLI chat loop (easy to test and demo)
 
-“I’m feeling stressed” → ARC responds empathetically
+## Project Structure
 
-“I’m so happy!” → ARC celebrates with you
+- arc.py: All chatbot logic and the main loop
+- backend/: Production backend scaffold (API, orchestrator, storage, reliability controls)
+- requirements-backend.txt: Backend service dependencies
+- Dockerfile.backend: Backend container image
+- docker-compose.backend.yml: Local backend + Redis + Postgres stack
+- .env.backend.example: Backend environment configuration template
 
-2. Intent Understanding
+## Requirements
 
-Every message is analyzed to figure out what you want:
+- Python 3.8+
 
-Questions → gets you clear answers
+## Quick Start
 
-Factual requests → taps its knowledge base
+1. Open a terminal in the project folder
+2. Run the chatbot:
 
-Emotional expressions → responds with empathy
+```bash
+python arc.py
+```
 
-Uncertainty → asks clarifying questions
+3. Type your message and press Enter
+4. Type "exit" to quit
 
-Topic shifts → smoothly changes the subject
+## Production Backend Quick Start
 
-Continuations → keeps track of follow-ups
+1. Install backend dependencies:
 
-This lets ARC respond in a way that feels natural and context-aware.
+```bash
+pip install -r requirements-backend.txt
+```
 
-3. Memory & Context
+2. Run backend API locally:
 
-ARC remembers your past conversations. It tracks:
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
 
-What you talked about
+3. Test health endpoint:
 
-Your emotional trends
+```bash
+curl http://localhost:8000/healthz
+```
 
-Corrections and preferences
+4. Test chat endpoint:
 
-How you like explanations (simple, step-by-step, or advanced)
+```bash
+curl -X POST http://localhost:8000/v1/chat \
+	-H "Content-Type: application/json" \
+	-d '{"session_id":"demo-1","user_id":"u-1","message":"hey"}'
+```
 
-This means multi-turn conversations feel coherent, and ARC can tailor responses based on what it “knows” about you.
+5. Optional Docker Compose stack:
 
-4. Knowledge & Reasoning
+```bash
+docker compose -f docker-compose.backend.yml up --build
+```
 
-ARC has a built-in knowledge base and can:
+## Render Deployment
 
-Answer factual questions
+This project is ready to deploy to Render as a web service.
 
-Solve math problems step-by-step
+Quick path:
 
-Explain concepts at beginner, intermediate, or advanced levels
+1. Push the repo to GitHub
+2. Create a new Render Blueprint deployment
+3. Let Render use [render.yaml](render.yaml)
+4. Open the generated public URL
 
-Reference previous topics in the conversation
+Start command used by Render:
 
-Example:
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+```
 
-User: “Explain gravity.”
+Important note:
 
-Beginner → “Gravity is like an invisible force that pulls things together.”
+- The public demo path uses `/v1/chat/simple`
+- That endpoint keeps session state in memory only
+- On free Render instances, sleep/restart can clear that memory
 
-Advanced → “Gravity is spacetime curvature caused by mass-energy, per general relativity.”
+See [RENDER_DEPLOYMENT.md](RENDER_DEPLOYMENT.md) for the full setup and tradeoffs.
 
-5. Personality
+## Performance Benchmarking & Optimization
 
-ARC can adopt different personalities to make conversations feel more natural: playful, serious, sarcastic, calm, inquisitive, or cheerful. It keeps a personality for a few turns before switching to keep things fresh.
+The project includes comprehensive performance analysis tools:
 
-Example:
+### Running Performance Benchmarks
 
-Playful: “Aha! Gravity is basically Earth’s way of saying ‘hey, you belong here!’ 😄”
+```bash
+# Benchmark latency, throughput, and identify bottlenecks
+python scripts/benchmark_performance.py
 
-Serious: “Gravity is a fundamental force that governs the motion of objects with mass.”
+# Analyze parameter sensitivity (prompt size, retrieval steps, tool calls)
+python scripts/analyze_bottlenecks.py
 
-6. Learning & Adaptation
+# Generate optimization roadmap with ROI analysis
+python scripts/generate_optimization_report.py
+```
 
-ARC learns from your feedback. If you say:
+### Output Reports
 
-“Explain simply” → ARC remembers to simplify future answers
+- **PERFORMANCE_BENCHMARKING_REPORT.md** - Comprehensive findings and recommendations
+- **scripts/benchmark_report.json** - Raw latency measurements
+- **scripts/bottleneck_analysis.json** - Parameter sensitivity analysis
+- **scripts/optimization_report.json** - Prioritized optimization roadmap
 
-“I’m a beginner” → ARC adjusts difficulty
+### Key Findings
 
-Corrections → ARC learns from them
+- **Average Latency:** 2.8ms (component level) with 10.15ms for persistent storage
+- **Throughput:** 100+ req/sec baseline, 200+ req/sec with optimizations
+- **Bottleneck:** Memory store persistence (41% of total latency)
+- **Opportunities:** 7 optimization proposals with potential 45-70% latency reduction
+- **ROI:** $1,050 annual savings with $3,900 implementation cost (11 month payback)
 
-It’s like having a tutor that adapts to how you want to learn.
+## How the Pipeline Works
 
-How it Works
+ARC processes each message in a consistent order:
 
-Think of ARC like a small factory:
+1. Detect emotion
+2. Detect intent
+3. Build context from memory
+4. Select response strategy
+5. Generate response using knowledge/memory
+6. Adapt tone and personality
+7. Update memory
+8. Return the response
 
-Reads your input
+This makes the code easy to walk through and explain in interviews.
 
-Detects emotion
+## Backend Reliability and Scale Design
 
-Figures out your intent
+The backend service is designed for low-risk migration from a single-process chatbot to a production architecture.
 
-Builds context from memory
+### Core Components
 
-Picks a response strategy
+- API ingress (`backend/main.py`)
+	- Stateless FastAPI endpoints
+	- Per-caller rate limiting
+	- Health and readiness checks
+- Orchestrator (`backend/orchestrator.py`)
+	- Intent and strategy routing
+	- Crisis safety routing
+	- Tool routing with allowlist
+	- Fallback and anti-repetition behavior
+- Session state (`backend/session_store.py`)
+	- Session snapshots for recent turns and response dedupe
+	- Supports in-memory and Redis-backed adapters (feature flag)
+- Memory storage (`backend/memory_store.py`)
+	- Durable event logging with SQLite and Postgres adapters (feature flag)
+- Reliability controls
+	- Retry with exponential backoff (`backend/retry.py`)
+	- Rate limiting (`backend/rate_limit.py`)
+	- Structured observability hooks (`backend/observability.py`)
+- Safety guardrails (`backend/safety.py`)
+	- Crisis keyword detection and emergency response routing
 
-Generates the response
+### Deployment Pattern
 
-Adjusts tone based on personality
+- Stateless API containers behind a load balancer
+- Redis for shared session state
+- Postgres for durable long-term memory and analytics
+- Feature flags in `.env.backend.example` for gradual rollout
 
-Updates memory
+## Phased Migration Plan (Low Risk)
 
-Outputs the final message
+1. Phase 0: Instrument current system
+	 - Add request IDs, structured logs, and error metrics
+	 - Keep existing chatbot runtime unchanged
 
-Every turn is an assembly line that keeps ARC responsive, consistent, and adaptive.
+2. Phase 1: Introduce stateless API facade
+	 - Deploy `backend/main.py`
+	 - Route a small percentage of traffic to the new endpoint
 
-Why I Built It
+3. Phase 2: Session externalization
+	 - Replace in-memory session store with Redis-backed store
+	 - Use feature flag to switch reads gradually
 
-I wanted to see how far I could take chatbot design without relying on external AI APIs. ARC is my playground for:
+4. Phase 3: Durable memory migration
+	 - Move from SQLite to Postgres event store
+	 - Dual-write during migration, then flip read path
 
-Experimenting with intent and emotion detection
+5. Phase 4: Retry, fallback, and guardrails hardening
+	 - Tune retry budgets and fallback triggers
+	 - Add policy alerts for crisis/safety routing
 
-Testing memory and context handling
+6. Phase 5: Scale out and operate
+	 - Horizontal autoscaling
+	 - SLO-based alerting and canary deployments
 
-Exploring adaptive teaching and explanations
+## Testing
 
-Learning how personality affects conversation
+Run backend unit/API tests:
 
-It’s as much a learning tool for me as it is a chatbot.
+```bash
+pytest
+```
 
+Run deterministic model QA cases:
 
-<img width="1221" height="446" alt="Screenshot 2026-02-28 185431" src="https://github.com/user-attachments/assets/ef51d52f-e6d0-4478-beed-457cc321cda1" />
+```bash
+python scripts/evaluate_model_qa.py --set qa_sets/v1/deterministic.jsonl
+```
 
-<img width="1479" height="510" alt="Screenshot 2026-02-28 185616" src="https://github.com/user-attachments/assets/7a0d81ec-3790-4ecf-b731-29ab5d99ae6b" />
+Aggregate chatbot KPI logs into a report:
 
+```bash
+python scripts/aggregate_chatbot_kpis.py --input arc-backend.log --format markdown
+```
 
+Quality framework and rubric:
 
+- `MODEL_QA_FRAMEWORK.md`
+- `qa_sets/v1/deterministic.jsonl`
+- `qa_sets/v1/behavioral.jsonl`
+- `qa_sets/v1/adversarial.jsonl`
+- `ANALYTICS_REPORTING_PLAN.md`
+- `dashboard_specs/arc_kpi_dashboard.json`
 
+## API Contract
+
+### POST `/v1/chat`
+
+Request body:
+
+```json
+{
+	"session_id": "session-123",
+	"user_id": "user-42",
+	"message": "Can you calculate 2 + 2?"
+}
+```
+
+Response body:
+
+```json
+{
+	"session_id": "session-123",
+	"response": "Result: 4.0",
+	"strategy": "tool_call",
+	"safety_routed": false,
+	"fallback_used": false
+}
+```
+
+## Notes
+
+- The project is deliberately rule-based (no external NLP libraries) so the behavior is deterministic and easy to reason about.
+- Personality and learning systems are designed for clarity over complexity.
+
+## License
+
+MIT
