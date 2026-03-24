@@ -1,0 +1,132 @@
+{
+  "generated_at": "2026-03-23T16:45:21.318327",
+  "executive_summary": {
+    "total_components": 6,
+    "critical_bottlenecks": 1,
+    "warning_bottlenecks": 1,
+    "avg_latency_ms": 2.7750000000000004,
+    "p95_latency_ms": 3.75,
+    "p99_latency_ms": 4.949999999999999,
+    "current_throughput_rps": 100,
+    "estimated_annual_cost_usd": 2000.0,
+    "potential_annual_savings_usd": 438.0
+  },
+  "optimization_priorities": [
+    {
+      "rank": 1,
+      "optimization_id": "OPT_001",
+      "title": "Cache intent inference",
+      "component": "orchestrator",
+      "description": "Add LRU cache to intent inference",
+      "business_case": "Reduce orchestrator latency by 60%, improving throughput by 40%",
+      "latency_reduction_pct": 60,
+      "throughput_improvement_pct": 40,
+      "cost_reduction_pct": 35,
+      "implementation_effort_hours": 4,
+      "estimated_cost_usd": 2500,
+      "roi_pct": 70.0,
+      "payback_days": 521.4285714285714,
+      "risk_level": "low",
+      "dependencies": [
+        "test_suite_enhanced",
+        "monitoring_setup"
+      ],
+      "phases": [
+        "Phase 1: High-ROI Foundations (Weeks 1-4)"
+      ],
+      "success_metrics": [
+        "Reduce orchestrator latency by 60%",
+        "Improve throughput by 40%",
+        "No performance regression in other components",
+        "Zero downtime deployment"
+      ]
+    },
+    {
+      "rank": 2,
+      "optimization_id": "OPT_002",
+      "title": "Async memory operations",
+      "component": "memory_store",
+      "description": "Convert to async/await pattern",
+      "business_case": "Reduce memory_store latency by 55%, improving throughput by 70%",
+      "latency_reduction_pct": 55,
+      "throughput_improvement_pct": 70,
+      "cost_reduction_pct": 25,
+      "implementation_effort_hours": 10,
+      "estimated_cost_usd": 2500,
+      "roi_pct": 50.0,
+      "payback_days": 730.0,
+      "risk_level": "medium",
+      "dependencies": [
+        "monitoring_setup",
+        "database_tuning",
+        "OPT_001"
+      ],
+      "phases": [
+        "Phase 1: High-ROI Foundations (Weeks 1-4)"
+      ],
+      "success_metrics": [
+        "Reduce memory_store latency by 55%",
+        "Improve throughput by 70%",
+        "No performance regression in other components",
+        "Zero downtime deployment"
+      ]
+    }
+  ],
+  "implementation_roadmap": [
+    {
+      "phase_number": 1,
+      "phase_name": "Phase 1: High-ROI Foundations (Weeks 1-4)",
+      "duration_weeks": 4,
+      "optimizations": [
+        "OPT_001: Cache intent inference",
+        "OPT_002: Async memory operations"
+      ],
+      "total_effort_hours": 14,
+      "expected_cost_savings_annual": 1095.0,
+      "success_criteria": [
+        "All 2 optimizations deployed",
+        "Zero performance regressions",
+        "Achieve 115% cumulative latency reduction",
+        "Meet all SLA targets"
+      ],
+      "risks": [
+        "Deployment risk if changes are too aggressive",
+        "Resource constraints",
+        "Integration issues with existing code"
+      ],
+      "dependencies": [
+        "Enhanced test coverage",
+        "Monitoring setup",
+        "Staging environment"
+      ]
+    }
+  ],
+  "risk_assessments": [
+    {
+      "optimization_id": "OPT_001",
+      "technical_risk": "Caching logic complexity, cache invalidation bugs",
+      "operational_risk": "Cache miss scenarios, warm-up requirements",
+      "business_risk": "Increased latency if cache fails",
+      "mitigation_strategies": [
+        "Comprehensive cache behavior tests",
+        "Canary deployment to 10% traffic",
+        "Fallback to bypass cache if needed",
+        "Detailed monitoring and alerting"
+      ],
+      "rollback_plan": "Revert orchestrator changes and clear any caches/buffers. Monitor for 5 minutes to confirm stability."
+    },
+    {
+      "optimization_id": "OPT_002",
+      "technical_risk": "Async/await complexity, deadlocks",
+      "operational_risk": "Connection pool exhaustion",
+      "business_risk": "Memory operations timeout",
+      "mitigation_strategies": [
+        "Incremental migration to async",
+        "Connection pool monitoring",
+        "Load testing at 2x capacity",
+        "Circuit breakers for fallback"
+      ],
+      "rollback_plan": "Revert memory_store changes and clear any caches/buffers. Monitor for 5 minutes to confirm stability."
+    }
+  ]
+}

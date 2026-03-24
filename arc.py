@@ -102,6 +102,7 @@ def update_memory(user_input: str, arc_response: str, memory: dict):
         memory.setdefault('corrections', []).append(user_input)
     if any(x in user_input.lower() for x in ["explain simply", "step by step", "in detail", "summarize", "just the basics", "give me details"]):
         memory['preferred_style'] = user_input
+    return memory
 
 def retrieve_context(memory: dict, user_input: str) -> dict:
     """
@@ -153,6 +154,127 @@ def detect_emotion(user_input: str) -> str:
     if any(w in text for w in ["confused", "uncertain", "not sure", "maybe", "idk", "don't know", "unsure", "unclear", "hmm", "huh"]):
         return 'uncertain'
     return 'neutral'
+
+
+CRISIS_PATTERNS = [
+    r"\b(kill myself|suicide|end my life|want to die|self harm|hurt myself|not worth living)\b",
+    r"\b(hurt someone|kill them|violent thoughts|attack someone)\b",
+]
+
+
+def is_crisis_message(user_input: str) -> bool:
+    text = user_input.lower().strip()
+    return any(re.search(pattern, text) for pattern in CRISIS_PATTERNS)
+
+
+def crisis_response() -> str:
+    return (
+        "I'm really glad you reached out. I can't provide crisis support, but you deserve immediate help. "
+        "If you might act on these thoughts, call emergency services now. "
+        "You can also contact 988 (US/Canada) or your local crisis hotline right away."
+    )
+
+
+def _safe_eval_ast(node):
+    if isinstance(node, ast.Expression):
+        return _safe_eval_ast(node.body)
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return node.value
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        value = _safe_eval_ast(node.operand)
+        return value if isinstance(node.op, ast.UAdd) else -value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod, ast.Pow)):
+        left = _safe_eval_ast(node.left)
+        right = _safe_eval_ast(node.right)
+        if isinstance(node.op, ast.Add):
+            return left + right
+        if isinstance(node.op, ast.Sub):
+            return left - right
+        if isinstance(node.op, ast.Mult):
+            return left * right
+        if isinstance(node.op, ast.Div):
+            return left / right
+        if isinstance(node.op, ast.Mod):
+            return left % right
+        if isinstance(node.op, ast.Pow):
+            return left ** right
+    raise ValueError("Unsupported expression")
+
+
+def safe_eval_expression(expr: str) -> float:
+    candidate = expr.strip()
+    if len(candidate) > 80:
+        raise ValueError("Expression too long")
+    if not re.fullmatch(r"[\d\s\+\-\*\/\(\)\.\%]+", candidate):
+        raise ValueError("Expression contains unsupported characters")
+    tree = ast.parse(candidate, mode="eval")
+    return _safe_eval_ast(tree)
+
+
+def _tool_datetime(_: object = None) -> str:
+    now = datetime.datetime.now()
+    return f"Current local time is {now.strftime('%Y-%m-%d %H:%M:%S')}."
+
+
+def _tool_calculator(args: dict) -> str:
+    expression = (args or {}).get("expression", "").strip()
+    if not expression:
+        return "Please provide a math expression to calculate."
+    try:
+        result = safe_eval_expression(expression)
+        return f"Result: {result}"
+    except Exception:
+        return "I can only calculate basic arithmetic with numbers and operators."
+
+
+TOOL_REGISTRY = {
+    "datetime": _tool_datetime,
+    "calculator": _tool_calculator,
+}
+
+
+def route_tool_call(user_input: str):
+    text = user_input.lower().strip()
+    if any(phrase in text for phrase in ["what time", "current time", "what day", "date today"]):
+        return TOOL_REGISTRY["datetime"]({})
+    expr_match = re.search(r"(?:calculate|solve)\s+([\d\s\+\-\*\/\(\)\.\%]+)", text)
+    if expr_match:
+        return TOOL_REGISTRY["calculator"]({"expression": expr_match.group(1)})
+    return None
+
+
+RESPONSE_POLICY = {
+    "clarify_variants": [
+        "Could you clarify what you mean?",
+        "Help me understand what you'd like to focus on.",
+        "I want to help, but I need a little more detail.",
+    ],
+    "generic_fallbacks": [
+        "How can I help you today?",
+        "What would you like to work on next?",
+        "Tell me a bit more so I can help better.",
+    ],
+}
+
+
+def finalize_response(response_text: str, memory: dict, strategy: str = "") -> str:
+    memory.setdefault("last_arc_responses", [])
+    candidate = (response_text or "").strip()
+    if not candidate:
+        candidate = RESPONSE_POLICY["generic_fallbacks"][0]
+
+    recent = memory.get("last_arc_responses", [])[-2:]
+    if candidate in recent:
+        variants = RESPONSE_POLICY["clarify_variants"] if strategy == "clarify_context" else RESPONSE_POLICY["generic_fallbacks"]
+        for variant in variants:
+            if variant not in recent:
+                candidate = variant
+                break
+
+    memory["last_arc_responses"].append(candidate)
+    if len(memory["last_arc_responses"]) > 6:
+        memory["last_arc_responses"] = memory["last_arc_responses"][-6:]
+    return candidate
 
 def adapt_tone(response: str, emotion: str, personality_state: str) -> str:
     """
@@ -220,7 +342,7 @@ def generate_answer(user_input: str, intent: str, memory: dict) -> str:
         expr = m.group(1)
         steps = [f"Step 1: Parse the expression '{expr}'."]
         try:
-            result = eval(expr)
+            result = safe_eval_expression(expr)
             steps.append(f"Step 2: Compute the result: {result}.")
             return "\n".join(steps) + f"\nFinal Answer: {result}"
         except Exception:
@@ -250,6 +372,7 @@ def generate_answer(user_input: str, intent: str, memory: dict) -> str:
 import tkinter as tk
 from tkinter import scrolledtext
 from tkinter import PhotoImage
+import ast
 
 # --- Conversation State & Memory ---
 conversation_history = []  # List of (user, bot) tuples
@@ -296,19 +419,12 @@ def infer_intent(user_input: str, memory: dict) -> str:
     # Continuation
     if re.search(r"\b(also|and|btw|by the way|oh|forgot|as well|plus|another thing|one more|additionally|besides)\b", text):
         return "continuation"
-    text = user_input.lower()
-    emotional_keywords = ["sad", "happy", "angry", "upset", "stressed", "depressed", "excited", "lonely", "worried", "anxious"]
-    if any(word in text for word in emotional_keywords):
-        return "emotional"
-    factual_keywords = ["how many", "what day", "when was", "who is", "what is", "where is", "define", "explain", "fact", "capital of", "math", "calculate", "solve"]
-    if any(word in text for word in factual_keywords) or text.endswith("?"):
-        return "factual_question"
-    help_keywords = ["help", "assist", "support", "can you do", "how do i", "need help", "show me", "walk me through", "guide me"]
-    if any(word in text for word in help_keywords):
+    if re.search(r"\b(help|assist|support|can you do|how do i|need help|show me|walk me through|guide me)\b", text):
         return "help_request"
-    study_keywords = ["study", "learn", "teach", "explain", "quiz", "practice", "exercise", "lesson", "homework", "assignment"]
-    if any(word in text for word in study_keywords):
+    if re.search(r"\b(study|learn|teach|quiz|practice|exercise|lesson|homework|assignment)\b", text):
         return "study_request"
+    if len(text.split()) <= 3:
+        return "casual_statement"
     return "general_chat"
 
 
@@ -317,8 +433,9 @@ def update_conversation_history(user, bot):
     arc_memory['history'].append((user, bot))
     if len(arc_memory['history']) > 20:
         arc_memory['history'].pop(0)
-    arc_memory['last_arc_responses'].append(bot)
-    if len(arc_memory['last_arc_responses']) > 3:
+    if not arc_memory['last_arc_responses'] or arc_memory['last_arc_responses'][-1] != bot:
+        arc_memory['last_arc_responses'].append(bot)
+    if len(arc_memory['last_arc_responses']) > 6:
         arc_memory['last_arc_responses'].pop(0)
 
 def is_repetition(bot_response):
@@ -341,11 +458,14 @@ def select_response_strategy(intent: str) -> str:
     mapping = {
         "casual_statement": "ask_followup",
         "question": "direct_answer",
-        "emotional_expression": "acknowledge_emotion",
+        "emotional_expression": "reflect",
         "uncertainty": "clarify_context",
         "continuation": "ask_followup",
         "topic_shift": "provide_options",
         "factual_request": "direct_answer",
+        "help_request": "clarify_context",
+        "study_request": "direct_answer",
+        "general_chat": "ask_followup",
         "unknown": "clarify_context",
         "idle": "clarify_context",
     }
@@ -365,83 +485,78 @@ def generate_response(user_input: str, intent: str, emotion: str, context: dict,
     No hard-coded '[Thoughtful]' prefix or extra tags. Returns only chatbot text.
     Ready for multi-turn, memory-aware conversation.
     """
+    if is_crisis_message(user_input):
+        return finalize_response(crisis_response(), memory, "safety")
+
     # Track previous responses to avoid exact repetition
     memory.setdefault('last_arc_responses', [])
-    
+
     # Select response strategy based on intent
-    if intent in ("factual_request", "question"):
-        strategy = "direct_answer"
-    elif intent == "emotional_expression":
-        strategy = "reflect"
-    elif intent == "uncertainty":
-        strategy = "clarify_context"
-    elif intent == "continuation":
-        strategy = "ask_followup"
-    elif intent == "topic_shift":
-        strategy = "provide_options"
-    else:
-        strategy = "ask_followup"
+    strategy = select_response_strategy(intent)
 
     # Adjust response style/detail if user has a preferred style
     style = memory.get('preferred_style', '').lower() if memory.get('preferred_style') else ''
 
     # Dynamic response generation
     if strategy == "direct_answer":
+        tool_result = route_tool_call(user_input)
+        if tool_result:
+            return finalize_response(tool_result, memory, strategy)
         answer = generate_answer(user_input, intent, memory)
         if answer:
             if 'step by step' in style or 'detail' in style:
                 if '\n' not in answer:
-                    return "Step 1: Let's break it down.\nStep 2: " + answer
+                    return finalize_response("Step 1: Let's break it down.\nStep 2: " + answer, memory, strategy)
             if 'summarize' in style or 'just the basics' in style:
-                return answer.split('.')[0] + '.'
-            return answer
-        return "Let me look into that for you."
+                return finalize_response(answer.split('.')[0] + '.', memory, strategy)
+            return finalize_response(answer, memory, strategy)
+        return finalize_response("Let me look into that for you.", memory, strategy)
     elif strategy == "reflect":
         if emotion == 'sad':
-            return "I'm here for you. If you want to talk more, I'm listening."
+            return finalize_response("I'm here for you. If you want to talk more, I'm listening.", memory, strategy)
         elif emotion == 'happy':
-            return "That's wonderful! What else is on your mind?"
+            return finalize_response("That's wonderful! What else is on your mind?", memory, strategy)
         elif emotion == 'stressed':
-            return "That sounds tough. Want to share more or take a break?"
+            return finalize_response("That sounds tough. Want to share more or take a break?", memory, strategy)
         elif emotion == 'excited':
-            return "I can feel your excitement! Want to dive deeper or celebrate?"
+            return finalize_response("I can feel your excitement! Want to dive deeper or celebrate?", memory, strategy)
         elif emotion == 'uncertain':
-            return "It's okay to feel uncertain. How can I help?"
+            return finalize_response("It's okay to feel uncertain. How can I help?", memory, strategy)
         else:
-            return "I'm here to listen."
+            return finalize_response("I'm here to listen.", memory, strategy)
     elif strategy == "clarify_context":
         # Vary the clarification response to avoid spam
         last_response = memory['last_arc_responses'][-1] if memory['last_arc_responses'] else ""
         
         if "Do you mean" in last_response:
             # Last time we asked with current_topic, now ask differently
-            return "Could you tell me more about what you're thinking?"
+            return finalize_response("Could you tell me more about what you're thinking?", memory, strategy)
         elif "Could you clarify" in last_response:
             # Switch to a different clarification
-            return "Help me understand—what would you like to talk about?"
+            return finalize_response("Help me understand what you'd like to talk about.", memory, strategy)
         elif "Help me understand" in last_response:
             # One more variation
-            return "I want to help, but I need a bit more to go on. What's on your mind?"
+            return finalize_response("I want to help, but I need a bit more to go on. What's on your mind?", memory, strategy)
         else:
             # Default
             if memory.get('current_topic'):
-                return f"Do you mean {memory['current_topic']}? Or something else?"
-            return "Could you clarify what you mean?"
+                return finalize_response(f"Do you mean {memory['current_topic']}? Or something else?", memory, strategy)
+            return finalize_response("Could you clarify what you mean?", memory, strategy)
     elif strategy == "ask_followup":
         if memory.get('current_topic'):
-            return f"Tell me more about {memory['current_topic']}."
-        return "Go on, I'm interested."
+            return finalize_response(f"Tell me more about {memory['current_topic']}.", memory, strategy)
+        return finalize_response("Go on, I'm interested.", memory, strategy)
     elif strategy == "provide_options":
         if memory.get('current_topic'):
-            return f"Would you like to keep talking about {memory['current_topic']} or switch topics?"
-        return "Is there something new you'd like to discuss?"
+            return finalize_response(f"Would you like to keep talking about {memory['current_topic']} or switch topics?", memory, strategy)
+        return finalize_response("Is there something new you'd like to discuss?", memory, strategy)
     # Fallback: use topic or memory for context-aware response
     if memory.get('current_topic'):
-        return f"Let's keep talking about {memory['current_topic']}."
+        return finalize_response(f"Let's keep talking about {memory['current_topic']}.", memory, strategy)
     if memory.get('last_arc_responses'):
         last = memory['last_arc_responses'][-1]
-        return f"Previously, we discussed: {last}"
-    return "I'm here to chat!"
+        return finalize_response(f"Previously, we discussed: {last}", memory, strategy)
+    return finalize_response("I'm here to chat!", memory, strategy)
 
 
 # --- 5. INTEGRATE PIPELINE INTO CHAT LOOP ---
@@ -466,10 +581,18 @@ def arc_chat_loop():
             # 'user_input': user_input_resolved,
             'last_intent': arc_memory['last_intent'],
         }
-        # 5. Response strategy selection
-        strategy = select_response_strategy(intent)
         # 6. Dynamic response generation
         bot_response = generate_response(user_input, intent, emotion, context, arc_memory)
+
+        initiative_context = {
+            "neutral_exchanges": sum(1 for i in arc_memory.get("intents", [])[-3:] if i in ("casual_statement", "general_chat")),
+            "mood": "uncertain" if emotion == "uncertain" else "neutral",
+            "topic_stale": len(set(arc_memory.get("topics", [])[-3:])) <= 1 and len(arc_memory.get("topics", [])) >= 3,
+            "topics": arc_memory.get("topics", []),
+        }
+        if should_take_initiative(user_input, initiative_context):
+            bot_response = f"{bot_response} {generate_proactive_prompt(initiative_context)}".strip()
+
         # 7. Adapt tone
         bot_response = adapt_tone(bot_response, emotion, personality_state)
 
@@ -601,7 +724,7 @@ def generate_proactive_prompt(context):
     Integrates memory, mood, topics, and personality.
     """
     # Only allow learning suggestion, provide neutral fallback
-    
+    return _suggest_learning(context)
 
 import re
 
@@ -781,6 +904,9 @@ ARC_CORE_TRAITS = [
     "witty",
     "observant"
 ]
+
+_arc_current_state = None
+_arc_state_turns_left = 0
 
 def set_arc_personality_state(state=None):
     """
@@ -998,6 +1124,9 @@ def live_emotional_support_chat():
                     return apples, friends
         return None, None
     def generate_arc_response(user_input, context_memory):
+        if is_crisis_message(user_input):
+            update_context_memory(user_input, "safety", "crisis", [])
+            return crisis_response()
         # Detect intent, emotion, topics
         intent = infer_intent(user_input, context_memory)
         emotion = detect_emotion(user_input)
@@ -1123,11 +1252,6 @@ def live_emotional_support_chat():
         response = generate_arc_response(user_input, context_memory)
         print(f"ARC: {response}")
 
-# To run:
-if __name__ == "__main__":
-    live_emotional_support_chat()
-
-
 """
 ChatBot GUI: Pure Python Tkinter Front-End
 
@@ -1199,15 +1323,10 @@ conversation_db = {
 }
 
 # --- ARC Context-Aware Conversation Engine ---
-arc_memory = {
-    "recent_interactions": [],  # List of (user_input, arc_response)
-    "topics": set(),            # Set of current topics
-    "entities": set(),          # Set of discussed entities (names, places, etc.)
-    "max_memory": 8,            # How many turns to remember
-    "last_intent": None,        # Track last intent for context
-    "history": [],              # Full conversation history
-    "last_arc_responses": []    # Track last bot responses for context/loop prevention
-}
+# Merge legacy fields into the canonical memory object instead of redefining it.
+arc_memory.setdefault("recent_interactions", [])
+arc_memory.setdefault("entities", [])
+arc_memory.setdefault("max_memory", 8)
 
 def extract_entities_and_topics(text):
     keywords = [
@@ -1226,8 +1345,14 @@ def extract_entities_and_topics(text):
 
 def update_context(user_input):
     topics, entities = extract_entities_and_topics(user_input)
-    arc_memory["topics"].update(topics)
-    arc_memory["entities"].update(entities)
+    arc_memory.setdefault("topics", [])
+    arc_memory.setdefault("entities", [])
+    for topic in topics:
+        if topic not in arc_memory["topics"]:
+            arc_memory["topics"].append(topic)
+    for entity in entities:
+        if entity not in arc_memory["entities"]:
+            arc_memory["entities"].append(entity)
 
 def remember_interaction(user_input, arc_response):
     arc_memory["recent_interactions"].append((user_input, arc_response))
@@ -1344,8 +1469,8 @@ def detect_mood(user_input):
         return "neutral"
 
 def update_arc_mood(user_input):
-    global narc_current_mood
-    narc_current_mood = detect_mood(user_input)
+    global arc_current_mood
+    arc_current_mood = detect_mood(user_input)
 
 def mood_response(user_input):
     user_mood = detect_mood(user_input)
@@ -1482,13 +1607,24 @@ class ChatBotGUI:
             self.send_button.config(state='disabled')
             return
         # Intent-driven pipeline only
-        intent = infer_intent(normalized, {})
-        context = {'user_input': normalized, 'last_intent': None}
-        strategy = select_response_strategy(intent)
+        intent = infer_intent(normalized, arc_memory)
+        context = {'user_input': normalized, 'last_intent': arc_memory.get('last_intent')}
         # Detect emotion for context-aware response
         emotion = detect_emotion(normalized)
         # Use arc_memory for memory/context
         response = generate_response(normalized, intent, emotion, context, arc_memory)
+
+        initiative_context = {
+            "neutral_exchanges": sum(1 for i in arc_memory.get("intents", [])[-3:] if i in ("casual_statement", "general_chat")),
+            "mood": "uncertain" if emotion == "uncertain" else "neutral",
+            "topic_stale": len(set(arc_memory.get("topics", [])[-3:])) <= 1 and len(arc_memory.get("topics", [])) >= 3,
+            "topics": arc_memory.get("topics", []),
+        }
+        if should_take_initiative(normalized, initiative_context):
+            response = f"{response} {generate_proactive_prompt(initiative_context)}".strip()
+
+        update_memory(normalized, response, arc_memory)
+        arc_memory['last_intent'] = intent
         self.display_message(response, sender="bot")
         self.entry.delete(0, tk.END)
 

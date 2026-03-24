@@ -1,0 +1,365 @@
+{
+  "component_profiles": {
+    "orchestrator": {
+      "component_name": "orchestrator",
+      "base_latency_ms": 2.5,
+      "latency_per_prompt_char": 0.0008,
+      "latency_per_retrieval_step": 0.0,
+      "latency_per_tool_call": 0.0,
+      "max_concurrent_calls": 100,
+      "memory_usage_mb": 45.0,
+      "cpu_usage_pct": 15.0
+    },
+    "session_store": {
+      "component_name": "session_store",
+      "base_latency_ms": 0.8,
+      "latency_per_prompt_char": 1e-05,
+      "latency_per_retrieval_step": 0.1,
+      "latency_per_tool_call": 0.05,
+      "max_concurrent_calls": 1000,
+      "memory_usage_mb": 120.0,
+      "cpu_usage_pct": 5.0
+    },
+    "memory_store": {
+      "component_name": "memory_store",
+      "base_latency_ms": 3.2,
+      "latency_per_prompt_char": 5e-05,
+      "latency_per_retrieval_step": 0.2,
+      "latency_per_tool_call": 0.15,
+      "max_concurrent_calls": 200,
+      "memory_usage_mb": 250.0,
+      "cpu_usage_pct": 25.0
+    },
+    "tool_router": {
+      "component_name": "tool_router",
+      "base_latency_ms": 1.2,
+      "latency_per_prompt_char": 0.0003,
+      "latency_per_retrieval_step": 0.0,
+      "latency_per_tool_call": 0.0,
+      "max_concurrent_calls": 500,
+      "memory_usage_mb": 30.0,
+      "cpu_usage_pct": 8.0
+    },
+    "http_handler": {
+      "component_name": "http_handler",
+      "base_latency_ms": 2.0,
+      "latency_per_prompt_char": 2e-05,
+      "latency_per_retrieval_step": 0.0,
+      "latency_per_tool_call": 0.0,
+      "max_concurrent_calls": 200,
+      "memory_usage_mb": 80.0,
+      "cpu_usage_pct": 12.0
+    }
+  },
+  "test_scenarios": {
+    "small_query": {
+      "request_id": "sim_001",
+      "total_latency_ms": 9.759,
+      "prompt_size": 50,
+      "retrieval_steps": 0,
+      "tool_calls": 0,
+      "input_tokens": 37,
+      "output_tokens": 150,
+      "component_latencies": {
+        "orchestrator": 2.54,
+        "session_store": 0.8005,
+        "memory_store": 3.2025,
+        "tool_router": 1.2149999999999999,
+        "http_handler": 2.001
+      }
+    },
+    "medium_query": {
+      "request_id": "sim_001",
+      "total_latency_ms": 10.236,
+      "prompt_size": 200,
+      "retrieval_steps": 1,
+      "tool_calls": 0,
+      "input_tokens": 75,
+      "output_tokens": 150,
+      "component_latencies": {
+        "orchestrator": 2.66,
+        "session_store": 0.902,
+        "memory_store": 3.41,
+        "tool_router": 1.26,
+        "http_handler": 2.004
+      }
+    },
+    "complex_query": {
+      "request_id": "sim_001",
+      "total_latency_ms": 12.18,
+      "prompt_size": 1000,
+      "retrieval_steps": 3,
+      "tool_calls": 2,
+      "input_tokens": 275,
+      "output_tokens": 150,
+      "component_latencies": {
+        "orchestrator": 3.3,
+        "session_store": 1.2100000000000002,
+        "memory_store": 4.15,
+        "tool_router": 1.5,
+        "http_handler": 2.02
+      }
+    },
+    "large_query": {
+      "request_id": "sim_001",
+      "total_latency_ms": 16.72,
+      "prompt_size": 4000,
+      "retrieval_steps": 5,
+      "tool_calls": 4,
+      "input_tokens": 1025,
+      "output_tokens": 150,
+      "component_latencies": {
+        "orchestrator": 5.7,
+        "session_store": 1.54,
+        "memory_store": 5.0,
+        "tool_router": 2.4,
+        "http_handler": 2.08
+      }
+    }
+  },
+  "parameter_sensitivity": {
+    "prompt_size_impact": {
+      "50": {
+        "total_latency_ms": 9.759,
+        "component_breakdown": {
+          "orchestrator": 2.54,
+          "session_store": 0.8005,
+          "memory_store": 3.2025,
+          "tool_router": 1.2149999999999999,
+          "http_handler": 2.001
+        }
+      },
+      "100": {
+        "total_latency_ms": 9.818000000000001,
+        "component_breakdown": {
+          "orchestrator": 2.58,
+          "session_store": 0.801,
+          "memory_store": 3.205,
+          "tool_router": 1.23,
+          "http_handler": 2.002
+        }
+      },
+      "200": {
+        "total_latency_ms": 9.936,
+        "component_breakdown": {
+          "orchestrator": 2.66,
+          "session_store": 0.802,
+          "memory_store": 3.21,
+          "tool_router": 1.26,
+          "http_handler": 2.004
+        }
+      },
+      "500": {
+        "total_latency_ms": 10.29,
+        "component_breakdown": {
+          "orchestrator": 2.9,
+          "session_store": 0.805,
+          "memory_store": 3.225,
+          "tool_router": 1.3499999999999999,
+          "http_handler": 2.01
+        }
+      },
+      "1000": {
+        "total_latency_ms": 10.879999999999999,
+        "component_breakdown": {
+          "orchestrator": 3.3,
+          "session_store": 0.81,
+          "memory_store": 3.25,
+          "tool_router": 1.5,
+          "http_handler": 2.02
+        }
+      },
+      "2000": {
+        "total_latency_ms": 12.059999999999999,
+        "component_breakdown": {
+          "orchestrator": 4.1,
+          "session_store": 0.8200000000000001,
+          "memory_store": 3.3000000000000003,
+          "tool_router": 1.7999999999999998,
+          "http_handler": 2.04
+        }
+      },
+      "4000": {
+        "total_latency_ms": 14.420000000000002,
+        "component_breakdown": {
+          "orchestrator": 5.7,
+          "session_store": 0.8400000000000001,
+          "memory_store": 3.4000000000000004,
+          "tool_router": 2.4,
+          "http_handler": 2.08
+        }
+      }
+    },
+    "retrieval_steps_impact": {
+      "0": {
+        "total_latency_ms": 9.818000000000001,
+        "component_breakdown": {
+          "orchestrator": 2.58,
+          "session_store": 0.801,
+          "memory_store": 3.205,
+          "tool_router": 1.23,
+          "http_handler": 2.002
+        }
+      },
+      "1": {
+        "total_latency_ms": 10.117999999999999,
+        "component_breakdown": {
+          "orchestrator": 2.58,
+          "session_store": 0.901,
+          "memory_store": 3.4050000000000002,
+          "tool_router": 1.23,
+          "http_handler": 2.002
+        }
+      },
+      "2": {
+        "total_latency_ms": 10.418,
+        "component_breakdown": {
+          "orchestrator": 2.58,
+          "session_store": 1.0010000000000001,
+          "memory_store": 3.605,
+          "tool_router": 1.23,
+          "http_handler": 2.002
+        }
+      },
+      "3": {
+        "total_latency_ms": 10.718,
+        "component_breakdown": {
+          "orchestrator": 2.58,
+          "session_store": 1.101,
+          "memory_store": 3.805,
+          "tool_router": 1.23,
+          "http_handler": 2.002
+        }
+      },
+      "5": {
+        "total_latency_ms": 11.318000000000001,
+        "component_breakdown": {
+          "orchestrator": 2.58,
+          "session_store": 1.3010000000000002,
+          "memory_store": 4.205,
+          "tool_router": 1.23,
+          "http_handler": 2.002
+        }
+      },
+      "10": {
+        "total_latency_ms": 12.818000000000001,
+        "component_breakdown": {
+          "orchestrator": 2.58,
+          "session_store": 1.8010000000000002,
+          "memory_store": 5.205,
+          "tool_router": 1.23,
+          "http_handler": 2.002
+        }
+      }
+    },
+    "tool_calls_impact": {
+      "0": {
+        "total_latency_ms": 9.818000000000001,
+        "component_breakdown": {
+          "orchestrator": 2.58,
+          "session_store": 0.801,
+          "memory_store": 3.205,
+          "tool_router": 1.23,
+          "http_handler": 2.002
+        }
+      },
+      "1": {
+        "total_latency_ms": 10.018,
+        "component_breakdown": {
+          "orchestrator": 2.58,
+          "session_store": 0.8510000000000001,
+          "memory_store": 3.355,
+          "tool_router": 1.23,
+          "http_handler": 2.002
+        }
+      },
+      "2": {
+        "total_latency_ms": 10.218,
+        "component_breakdown": {
+          "orchestrator": 2.58,
+          "session_store": 0.901,
+          "memory_store": 3.505,
+          "tool_router": 1.23,
+          "http_handler": 2.002
+        }
+      },
+      "3": {
+        "total_latency_ms": 10.418,
+        "component_breakdown": {
+          "orchestrator": 2.58,
+          "session_store": 0.9510000000000001,
+          "memory_store": 3.6550000000000002,
+          "tool_router": 1.23,
+          "http_handler": 2.002
+        }
+      },
+      "5": {
+        "total_latency_ms": 10.818000000000001,
+        "component_breakdown": {
+          "orchestrator": 2.58,
+          "session_store": 1.0510000000000002,
+          "memory_store": 3.955,
+          "tool_router": 1.23,
+          "http_handler": 2.002
+        }
+      }
+    },
+    "elasticity": {
+      "prompt_size_elasticity": 0.012018741087797921,
+      "retrieval_steps_elasticity": 0.030556121409655728,
+      "tool_calls_elasticity": 0.020370747606437152
+    }
+  },
+  "bottleneck_impacts": {
+    "orchestrator": {
+      "bottleneck_component": "orchestrator",
+      "latency_contribution_pct": 41.17647058823529,
+      "throughput_contribution_pct": 0.35000000000000003,
+      "cost_contribution_pct": 20.588235294117645,
+      "affected_request_pct": 100.0,
+      "estimated_requests_impacted_hourly": 3600,
+      "estimated_cost_impact_hourly_usd": 7.2
+    },
+    "memory_store": {
+      "bottleneck_component": "memory_store",
+      "latency_contribution_pct": 20.0,
+      "throughput_contribution_pct": 0.25,
+      "cost_contribution_pct": 10.0,
+      "affected_request_pct": 60.0,
+      "estimated_requests_impacted_hourly": 2160,
+      "estimated_cost_impact_hourly_usd": 4.32
+    }
+  },
+  "optimization_impacts": {
+    "cache_intent": {
+      "optimization_id": "opt_orchestrator_60",
+      "target_component": "orchestrator",
+      "latency_before_ms": 8.5,
+      "latency_after_ms": 3.4000000000000004,
+      "latency_reduction_pct": 60,
+      "throughput_before_rps": 100,
+      "throughput_after_rps": 140.0,
+      "throughput_improvement_pct": 40,
+      "cost_before_usd_per_1k_req": 2.0,
+      "cost_after_usd_per_1k_req": 1.3,
+      "cost_reduction_pct": 35,
+      "payback_period_days": 33.06878306878307,
+      "annual_savings_usd": 22075.199999999997
+    },
+    "parallelize_strategy": {
+      "optimization_id": "opt_orchestrator_45",
+      "target_component": "orchestrator",
+      "latency_before_ms": 8.5,
+      "latency_after_ms": 4.675000000000001,
+      "latency_reduction_pct": 45,
+      "throughput_before_rps": 100,
+      "throughput_after_rps": 135.0,
+      "throughput_improvement_pct": 35,
+      "cost_before_usd_per_1k_req": 2.0,
+      "cost_after_usd_per_1k_req": 1.6,
+      "cost_reduction_pct": 20,
+      "payback_period_days": 144.67592592592595,
+      "annual_savings_usd": 12614.399999999998
+    }
+  }
+}

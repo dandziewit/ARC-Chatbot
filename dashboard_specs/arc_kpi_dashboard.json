@@ -1,0 +1,49 @@
+{
+  "title": "ARC Chatbot KPI Dashboard",
+  "version": 1,
+  "timeRange": "last_7_days",
+  "datasource": "aggregated_kpi_events",
+  "sections": [
+    {
+      "title": "Executive Summary",
+      "panels": [
+        {"type": "stat", "metric": "chat_requests_total", "label": "Chat Requests", "thresholds": {"green": ">= 1"}},
+        {"type": "stat", "metric": "response_quality_score", "label": "Response Quality", "thresholds": {"green": ">= 0.95", "yellow": ">= 0.90", "red": "< 0.90"}},
+        {"type": "stat", "metric": "fallback_rate", "label": "Fallback Rate", "thresholds": {"green": "< 0.08", "yellow": "< 0.15", "red": ">= 0.15"}},
+        {"type": "stat", "metric": "containment_rate", "label": "Containment Rate", "thresholds": {"green": ">= 0.70", "yellow": ">= 0.60", "red": "< 0.60"}},
+        {"type": "stat", "metric": "latency_p95_ms", "label": "P95 Latency", "unit": "ms", "thresholds": {"green": "< 800", "yellow": "< 1000", "red": ">= 1000"}},
+        {"type": "stat", "metric": "user_satisfaction", "label": "User Satisfaction", "thresholds": {"green": ">= 0.85", "yellow": ">= 0.75", "red": "< 0.75"}}
+      ]
+    },
+    {
+      "title": "Quality and Containment",
+      "panels": [
+        {"type": "timeseries", "metric": "response_quality_score", "label": "Response Quality Trend"},
+        {"type": "timeseries", "metric": "fallback_rate", "label": "Fallback Rate Trend"},
+        {"type": "timeseries", "metric": "containment_rate", "label": "Containment Rate Trend"},
+        {"type": "bar", "metric": "strategy_mix", "label": "Strategy Mix by Day"},
+        {"type": "timeseries", "metric": "safety_route_rate", "label": "Safety Route Rate"}
+      ]
+    },
+    {
+      "title": "Reliability and Latency",
+      "panels": [
+        {"type": "timeseries", "metric": "requests_total", "label": "Request Volume"},
+        {"type": "timeseries", "metric": "latency_p50_ms", "label": "P50 Latency", "unit": "ms"},
+        {"type": "timeseries", "metric": "latency_p95_ms", "label": "P95 Latency", "unit": "ms"},
+        {"type": "timeseries", "metric": "rate_limit_rejection_rate", "label": "Rate Limit Rejection Rate"},
+        {"type": "timeseries", "metric": "retry_exhaustion_rate", "label": "Retry Exhaustion Rate"},
+        {"type": "timeseries", "metric": "storage_fallback_count", "label": "Storage Fallback Count"}
+      ]
+    },
+    {
+      "title": "Cost and User Sentiment",
+      "panels": [
+        {"type": "timeseries", "metric": "estimated_tokens_total", "label": "Estimated Tokens"},
+        {"type": "timeseries", "metric": "estimated_cost_usd_total", "label": "Estimated Cost", "unit": "usd"},
+        {"type": "timeseries", "metric": "average_estimated_tokens_per_response", "label": "Avg Tokens per Response"},
+        {"type": "timeseries", "metric": "user_satisfaction", "label": "User Satisfaction Trend"}
+      ]
+    }
+  ]
+}
