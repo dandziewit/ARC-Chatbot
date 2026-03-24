@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  arc-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.backend.example
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: arc
+      POSTGRES_PASSWORD: arc
+      POSTGRES_DB: arc
+    ports:
+      - "5432:5432"
