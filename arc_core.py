@@ -53,7 +53,10 @@ class ChatState:
     last_explained_topic: Optional[str] = None
     last_route: str = ""
     recovery_count: int = 0
-    
+    user_goals: list[str] = field(default_factory=list)
+    user_constraints: list[str] = field(default_factory=list)
+    last_intent: str = ""
+
     def add_turn(self, user_msg: str, bot_msg: str) -> None:
         """Record user-bot exchange."""
         self.turns.append((user_msg, bot_msg))
@@ -81,86 +84,147 @@ class ChatState:
 def classify_intent(user_text: str, state: Optional[ChatState] = None) -> str:
     """
     Classify user intent from message text.
-    
-    Returns one of: question, factual_request, emotional_expression, 
-                   uncertainty, casual_statement, general_chat
-    
-    Args:
-        user_text: Raw user message
-        state: Optional conversation state for context
-    
-    Returns:
-        Intent string (lowercase)
+
+    Returns one of: question, factual_request, emotional_expression,
+                   follow_up, decision_request, plan_request,
+                   context_connection, meta_complaint, constraint_update,
+                   vague_input, uncertainty, casual_statement, general_chat
     """
     text = normalize_text(user_text)
-    
+
     if not text:
         return "uncertainty"
-    
-    # Emotional expression (high priority - explicit emotion keywords).
+
+    # --- Context connection ("how do those connect?") ---
+    connection_triggers = [
+        "how do those connect", "how does that connect", "what do those have in common",
+        "how are those related", "connect the dots", "how is that related",
+    ]
+    if any(t in text for t in connection_triggers):
+        return "context_connection"
+
+    # --- Meta-complaints about bot quality ---
+    meta_triggers = [
+        "stop being generic", "you're being generic", "too generic", "stop being vague",
+        "give me a real answer", "be more specific", "actual answer", "real answer",
+        "you're not helping", "that didn't help", "useless", "be honest",
+    ]
+    if any(t in text for t in meta_triggers):
+        return "meta_complaint"
+
+    # --- Decision requests ---
+    decision_triggers = [
+        "should i", "pros and cons", "what would you do", "give me pros",
+        "is it better to", "which is better", "pick one", "defend it",
+        "safest option", "safer option", "argue the opposite",
+    ]
+    if any(t in text for t in decision_triggers):
+        return "decision_request"
+
+    # --- Plan requests ---
+    plan_triggers = [
+        "3-step plan", "3 step plan", "step plan", "give me a plan",
+        "make a plan", "roadmap", "plan to get into", "plan for tech",
+        "how do i get into", "step by step",
+    ]
+    if any(t in text for t in plan_triggers):
+        return "plan_request"
+
+    # --- Follow-up on previous answer ---
+    follow_up_exact = {
+        "why", "why?", "and?", "so?", "really?", "seriously?",
+        "why is that", "why does that matter", "why does it matter",
+        "why should i care", "why is it important",
+        "be specific", "get specific", "more specific",
+        "make it actionable", "now make it actionable", "actionable for today",
+        "simplify", "now simplify", "simpler", "make it simpler",
+        "next step", "what's my next move", "what next",
+        "what should i actually do", "what should i focus on",
+        "ask me questions", "ask me",
+        "exact next move", "what's your exact next move",
+        "elaborate", "expand on that", "what does that mean",
+    }
+    if text.strip().rstrip('?') in follow_up_exact or text.strip() in follow_up_exact:
+        return "follow_up"
+    follow_up_phrases = [
+        "why does that", "why should i", "why is it", "why does it",
+        "explain more", "tell me more about", "be more specific",
+        "make it actionable", "now simplify", "now make it",
+        "based on what i've told you", "based on what i told you",
+        "given what i said", "given everything", "pretend you're me",
+    ]
+    if any(t in text for t in follow_up_phrases):
+        return "follow_up"
+
+    # --- Constraint updates (user describing their situation) ---
+    constraint_triggers = [
+        "i work 9", "work 9-5", "9 to 5", "nine to five",
+        "tired after work", "tired when i get home", "no experience",
+        "i'm broke", "im broke", "no money", "can't afford",
+        "limited time", "don't have time", "only have",
+    ]
+    if any(t in text for t in constraint_triggers):
+        return "constraint_update"
+
+    # --- Emotional expression (high priority) ---
     emotions = [
         "sad", "stressed", "anxious", "happy", "excited", "frustrated",
         "angry", "confused", "worried", "depressed", "upset", "mad", "lonely",
+        "scared", "afraid", "overwhelmed", "stuck",
     ]
     if any(e in text for e in emotions):
         return "emotional_expression"
 
-    # Personal sharing usually needs an empathetic response.
     if re.search(r"\bi\s+(am|feel|felt|miss|need|want|wish|do)\b", text):
-        if any(contains_phrase(text, t) for t in ["math", "science", "history", "geography", "physics", "biology", "chemistry", "technology", "ai", "programming"]):
+        if any(contains_phrase(text, t) for t in ["math", "science", "history", "geography", "physics", "biology", "chemistry", "technology", "ai", "programming", "tech", "coding"]):
             return "factual_request"
         return "emotional_expression"
-    
+
     # Questions about the bot itself
     bot_questions = ["what do you do", "what can you do", "who are you", "capabilities", "what are you", "tell me about yourself"]
     if any(q in text for q in bot_questions):
         return "factual_request"
-    
-    # Question detection (interrogative - highest priority after emotions)
+
+    # Question detection
     if "?" in text or any(q in text for q in ["what ", "when ", "where ", "who ", "why ", "how ", "can you help with"]):
         if "can you help" in text and "with" in text:
             return "factual_request"
         return "question"
-    
-    # Explicit requests for specific topics/help
+
+    # Explicit help/explain requests
     help_keywords = ["help me with", "explain", "teach me", "show me", "tell me about", "define", "what is", "how to"]
     if any(h in text for h in help_keywords):
         return "factual_request"
-    
-    # Requests for stories, jokes, or creative content
+
     creative_keywords = ["tell me a story", "tell a story", "joke", "funny", "make me laugh", "riddle"]
     if any(r in text for r in creative_keywords):
         return "general_chat"
-    
-    # Topic-specific queries
-    topics = ["math", "science", "history", "geography", "physics", "biology", "chemistry", "technology", "ai", "programming"]
+
+    topics = ["math", "science", "history", "geography", "physics", "biology", "chemistry", "technology", "tech", "ai", "programming", "coding", "code"]
     if any(contains_phrase(text, t) for t in topics):
         return "factual_request"
 
-    # Broad topical references should be treated as factual queries, not casual chat.
     if infer_topic(text) is not None:
         return "factual_request"
 
     if any(k in text for k in ["talk about", "let's talk about", "tell me about"]):
         return "factual_request"
 
-    # Basic arithmetic / expression intent.
     if solve_math_query(text) is not None:
         return "factual_request"
-    
-    # General help requests
+
     if any(h in text for h in ["can you help", "help me", "assist", "help with"]):
         return "general_chat"
-    
-    # Uncertainty / confusion signals
+
     if any(u in text for u in ["i don't know", "not sure", "maybe", "i think", "unclear", "confused about", "don't understand"]):
         return "uncertainty"
-    
-    # Very short statements (1-2 words)
-    if len(text.split()) <= 2:
-        return "casual_statement"
-    
-    # Default
+
+    # Very short (1-3 words) — vague without context
+    if len(text.split()) <= 3:
+        if state and (state.user_goals or state.user_constraints or state.turns):
+            return "follow_up"  # short follow-ups in active conversations
+        return "vague_input"
+
     return "general_chat"
 
 
@@ -264,6 +328,43 @@ def route_response(user_text: str, state: ChatState) -> Optional[str]:
         state.last_route = "recovery:noisy"
         return "That looks unclear. Rephrase it in one sentence and I will answer directly."
 
+    # ── Context connection ("how do those connect?") ──
+    context_conn = context_connection_response(user_text, state)
+    if context_conn:
+        state.last_route = "context_connection"
+        return context_conn
+
+    # ── Plan requests ("3-step plan to get into tech") ──
+    plan = plan_request_response(user_text, state)
+    if plan:
+        state.last_route = "plan_request"
+        return plan
+
+    # ── Decision framework ("should I quit?", "pros and cons") ──
+    decision = decision_framework_response(user_text, state)
+    if decision:
+        state.last_route = "decision_framework"
+        return decision
+
+    # ── Follow-up chaining ("why?", "be specific", "make it actionable") ──
+    follow_chain = follow_up_chain_response(user_text, state)
+    if follow_chain:
+        state.last_route = "follow_up_chain"
+        return follow_chain
+
+    # ── Constraint-aware response ("I work 9-5 and I'm tired") ──
+    constraint_resp = constraint_aware_response(user_text, state)
+    if constraint_resp:
+        state.last_route = "constraint_aware"
+        return constraint_resp
+
+    # ── Personalized advice (uses stored goals/constraints) ──
+    personalized = personalized_advice_response(user_text, state)
+    if personalized:
+        state.last_route = "personalized"
+        return personalized
+
+    # ── Legacy follow-up patterns ──
     follow = follow_up_response(user_text, state)
     if follow:
         state.last_route = "follow_up"
@@ -276,6 +377,16 @@ def route_response(user_text: str, state: ChatState) -> Optional[str]:
 
     if "advice_request" in intents and "emotional_expression" in intents:
         state.last_route = "emotion+advice"
+        goals = state.user_goals
+        constraints = state.user_constraints
+        if goals or constraints:
+            goal_str = goals[0] if goals else "your goal"
+            constraint_str = f" Given {', '.join(constraints[:2])}." if constraints else ""
+            return (
+                f"You're dealing with both stress and the question of whether to pursue {goal_str}.{constraint_str} "
+                f"Let's do one concrete next step: pick the single most important thing you can control in the next hour and do it. "
+                f"Then we decide the next move from there."
+            )
         return "You sound overloaded. Let's do one concrete next step: pick one thing you can control in the next hour, do it, then we decide the next move."
 
     return None
@@ -514,82 +625,82 @@ STRATEGY_TEMPLATES = {
     },
     "emotional_expression": {
         "positive": [
-            "I'm glad you're feeling good! Tell me more.",
-            "That's wonderful to hear! What else is making you happy?",
-            "Your positive energy is great! Keep it up.",
-            "I love your enthusiasm! What inspired this?",
+            "That's good to hear. What's contributing most to that feeling?",
+            "Love that energy. What's going well for you right now?",
+            "What's driving that positive shift?",
+            "Glad to hear it. Want to build on that momentum?",
         ],
         "neutral": [
-            "That's interesting. How does that make you feel?",
-            "I see. Can you tell me more?",
-            "Fascinating perspective. What led to that?",
-            "That's something to consider. Go on.",
+            "What part of that feels most important to you?",
+            "What do you want to do with that?",
+            "Is this something you're processing, or something you want to change?",
+            "What's driving that feeling right now?",
         ],
         "negative": [
-            "I hear you. That sounds tough. Want to talk about it?",
-            "I'm sorry you're feeling that way. I'm here to listen.",
-            "That must be difficult. Tell me more.",
-            "I understand the frustration. What's troubling you?",
+            "I hear you. That sounds hard. What part feels heaviest right now?",
+            "That sounds rough. What's the core of what's bothering you — workload, relationships, or direction?",
+            "Thanks for sharing that. Do you want to unpack it step by step?",
+            "What would help most right now — thinking it through or just being heard?",
         ],
     },
     "uncertainty": {
         "positive": [
-            "No worries! Let me clarify.",
-            "I'd be happy to explain!",
-            "Great question to ask! Here's the breakdown.",
-            "Let me shed some light on this.",
+            "Let me help clarify. What's the specific thing you're unsure about?",
+            "What piece of this would be most useful to clear up?",
+            "Narrow it down for me — what's the actual question underneath the uncertainty?",
+            "What would it look like if you had clarity on this?",
         ],
         "neutral": [
-            "Let me help break that down.",
-            "That's a fair concern. Here's what I think.",
-            "I can help clarify.",
-            "Let me help you understand this better.",
+            "What specifically are you unsure about? Name the exact sticking point.",
+            "What's the question you haven't been able to answer yet?",
+            "Let's break this down — what's the core thing you need to figure out?",
+            "Uncertainty usually has a root cause. What's yours?",
         ],
         "negative": [
-            "I understand the confusion.",
-            "Don't worry, let's work through this.",
-            "I get it, this can be confusing. Let me explain.",
-            "That's a valid concern. Here's my perspective.",
+            "What's the specific part that feels most unclear or stuck?",
+            "Let's narrow it. What's one thing that would make this feel less overwhelming?",
+            "I get the confusion. What was the last thing that made sense before it got blurry?",
+            "What have you already tried or ruled out?",
         ],
     },
     "casual_statement": {
         "positive": [
-            "That's great! Tell me more.",
-            "Nice! I'd love to hear more about that.",
-            "Awesome! What else is on your mind?",
-            "I love it! Keep going.",
+            "What prompted that?",
+            "What do you want to do with that?",
+            "Where does that take you?",
+            "What's the context behind it?",
         ],
         "neutral": [
-            "Interesting. What else?",
-            "I see. Tell me more about that.",
-            "That makes sense. What's next?",
-            "Got it. Anything else on your mind?",
+            "What are you hoping to figure out from it?",
+            "Where does that leave you right now?",
+            "What do you actually want here — information, a decision, or just to process it?",
+            "What's the thing underneath that statement that you're really asking?",
         ],
         "negative": [
-            "Go on, I'm listening.",
-            "I understand. What else?",
-            "I hear you. Tell me more.",
-            "That sounds challenging. What happened next?",
+            "What's the obstacle you're actually facing?",
+            "What's the most frustrating part of this for you?",
+            "What would a win look like right now?",
+            "What happened that brought you to this point?",
         ],
     },
     "general_chat": {
         "positive": [
-            "I love the energy! Keep going.",
-            "Your enthusiasm is contagious! Tell me more.",
-            "That's awesome! What inspired that?",
-            "I'm loving this conversation! Continue.",
+            "What's the best outcome you're hoping for here?",
+            "What's behind that — what are you trying to figure out?",
+            "What's your read on it?",
+            "What's the next thing you need to know to move forward?",
         ],
         "neutral": [
-            "Tell me more about that.",
-            "That's interesting. What else?",
-            "I see your point. Go on.",
-            "That's worth exploring. What do you think?",
+            "What's the specific thing you're trying to figure out?",
+            "What's the outcome you actually want from this conversation?",
+            "What's the obstacle you're up against right now?",
+            "What's the one question you most want answered?",
         ],
         "negative": [
-            "I'm here to listen.",
-            "I understand. What's on your mind?",
-            "Let's talk through this.",
-            "I'm here to help. Tell me more.",
+            "What would actually help right now?",
+            "What's the core issue underneath this?",
+            "What have you already tried?",
+            "What would a useful answer look like to you?",
         ],
     },
 }
@@ -667,7 +778,8 @@ def infer_topic(text: str) -> Optional[str]:
         "history": ["history", "war", "renaissance", "egypt", "rome", "timeline"],
         "geography": ["geography", "capital", "country", "ocean", "mountain", "river"],
         "science": ["science", "physics", "chemistry", "biology", "dna", "gravity"],
-        "ai": ["ai", "machine learning", "neural", "model", "training", "algorithm"],
+        "ai": ["ai", "machine learning", "neural", "model", "training", "algorithm",
+               "tech", "technology", "coding", "code", "programming", "developer", "software"],
         "life": ["life", "sad", "happy", "stressed", "anxious", "motivation", "purpose"],
     }
 
@@ -686,6 +798,8 @@ def update_profile_memory(state: ChatState, user_text: str) -> None:
         state.current_topic = None
         state.topics.clear()
         state.last_explained_topic = None
+        state.user_goals.clear()
+        state.user_constraints.clear()
         return
 
     name_match = re.search(r"\bmy name is\s+([a-zA-Z][a-zA-Z\-']+)\b", text, re.IGNORECASE)
@@ -717,8 +831,50 @@ def update_profile_memory(state: ChatState, user_text: str) -> None:
         state.profile["age"] = age_match.group(1)
         state.kv_memory["age"] = state.profile["age"]
 
-    if "get into tech" in lowered or "trying to get into tech" in lowered:
+    # ── Goal extraction ──
+    if any(g in lowered for g in ["get into tech", "learn to code", "learn coding", "want to code",
+                                   "trying to get into tech", "switch to tech", "change to tech",
+                                   "become a developer", "become a programmer"]):
+        if "get into tech" not in state.user_goals:
+            state.user_goals.append("get into tech")
         state.profile["career_goal"] = "get into tech"
+
+    if any(g in lowered for g in ["be successful", "want to succeed", "want success", "achieve success"]):
+        if "be successful" not in state.user_goals:
+            state.user_goals.append("be successful")
+
+    if any(g in lowered for g in ["change my life", "change my career", "change careers",
+                                   "new career", "start over", "start fresh"]):
+        if "life change" not in state.user_goals:
+            state.user_goals.append("life change")
+
+    # ── Constraint extraction ──
+    if re.search(r"\bwork\s*9\s*[-–to]+\s*5\b", lowered) or "nine to five" in lowered or \
+       "9 to 5" in lowered or ("work" in lowered and "9-5" in lowered):
+        if "works 9-5" not in state.user_constraints:
+            state.user_constraints.append("works 9-5")
+
+    if any(t in lowered for t in ["tired after work", "tired when i get home",
+                                   "exhausted after", "drained after work", "no energy after"]):
+        if "tired after work" not in state.user_constraints:
+            state.user_constraints.append("tired after work")
+
+    if "no experience" in lowered or "no prior experience" in lowered:
+        if "no experience" not in state.user_constraints:
+            state.user_constraints.append("no experience")
+
+    if any(b in lowered for b in ["i'm broke", "im broke", "no money", "can't afford",
+                                   "limited money", "tight budget", "no savings"]):
+        if "limited budget" not in state.user_constraints:
+            state.user_constraints.append("limited budget")
+
+    only_time = re.search(r"\bonly have (\d+)\s*(month|week|hour|day)", lowered)
+    if only_time:
+        unit = only_time.group(2)
+        val = only_time.group(1)
+        constraint = f"only {val} {unit}s"
+        if constraint not in state.user_constraints:
+            state.user_constraints.append(constraint)
 
 
 def friendly_greeting_response() -> str:
@@ -1055,6 +1211,624 @@ def direct_conversation_reply(user_text: str, state: ChatState) -> Optional[str]
     return None
 
 
+# ============================================================================
+# CONTEXT CONNECTION HANDLER
+# ============================================================================
+
+def context_connection_response(user_text: str, state: ChatState) -> Optional[str]:
+    """Connect related topics across conversation history."""
+    text = normalize_text(user_text)
+    connection_triggers = [
+        "how do those connect", "how does that connect", "what do those have in common",
+        "how are those related", "connect the dots", "how is that related",
+    ]
+    if not any(t in text for t in connection_triggers):
+        return None
+
+    recent_user_msgs = " ".join(u.lower() for u, _ in state.turns[-12:])
+    has_stress = any(w in recent_user_msgs for w in ["stressed", "stress", "work is", "work's"])
+    has_tech_goal = "get into tech" in state.user_goals or any(
+        "tech" in u.lower() or "coding" in u.lower() for u, _ in state.turns[-12:]
+    )
+    has_quit_thought = any(
+        w in recent_user_msgs for w in ["quit", "leave", "change career", "switch"]
+    )
+
+    if has_stress and has_tech_goal:
+        return (
+            "Here's the direct connection: your work stress and your tech goal aren't separate problems — "
+            "they're the same problem from two angles.\n\n"
+            "The stress is your current situation pushing you out. "
+            "The tech goal is what's pulling you toward something better. "
+            "Both signals are pointing in the same direction: your current job isn't where you want to be long-term.\n\n"
+            "The real question isn't whether they're connected — it's how fast you can build the bridge between them."
+        )
+
+    if has_stress and has_quit_thought:
+        return (
+            "The connection: stress is often what makes the idea of quitting feel urgent. "
+            "But urgency born from pain leads to rash decisions. "
+            "Use the stress as information — it's telling you something needs to change — "
+            "but let strategy, not panic, decide the timeline."
+        )
+
+    topics = list(dict.fromkeys(state.topics[-6:]))
+    if len(topics) >= 2:
+        t1, t2 = topics[-2], topics[-1]
+        return (
+            f"The link between '{t1}' and '{t2}': they're likely both part of the same bigger question you're working through. "
+            f"Tell me what you're ultimately trying to decide or figure out, and I can map the connection precisely."
+        )
+
+    return (
+        "I can connect them if I know what you're trying to figure out overall. "
+        "What's the big-picture decision or goal underneath everything you've been asking about?"
+    )
+
+
+# ============================================================================
+# DECISION FRAMEWORK HANDLER
+# ============================================================================
+
+def decision_framework_response(user_text: str, state: ChatState) -> Optional[str]:
+    """Structured pros/cons/recommendation for decision questions."""
+    text = normalize_text(user_text)
+    decision_triggers = [
+        "should i", "pros and cons", "what would you do", "give me pros",
+        "is it better to", "which is better", "pick one", "defend it",
+        "safest option", "safer option", "argue the opposite",
+    ]
+    if not any(t in text for t in decision_triggers):
+        return None
+
+    recent = " ".join(u.lower() for u, _ in state.turns[-10:])
+
+    # Quit job to learn tech full-time
+    quit_in_context = "quit" in text or ("quit" in recent and "tech" in recent)
+    tech_in_context = "tech" in text or "tech" in recent or "coding" in recent
+    if quit_in_context and tech_in_context:
+        if "pros and cons" in text or "give me pros" in text:
+            return (
+                "Quitting your job to learn tech full-time:\n\n"
+                "PROS\n"
+                "• Full-time focus = 8+ hrs/day instead of 1 tired hour after work\n"
+                "• Forces real commitment — no half-in/half-out drift\n"
+                "• Faster skill-building when you can practice intensively\n\n"
+                "CONS\n"
+                "• Income stops — you need 6–12 months of expenses saved beforehand\n"
+                "• Self-directed learning without accountability is harder than it looks\n"
+                "• Tech hiring is competitive — time alone doesn't guarantee a job\n\n"
+                "RECOMMENDATION\n"
+                "Before quitting: spend 60 days learning consistently while employed. "
+                "If you can't sustain 30 min/day while working, quitting won't fix it. "
+                "If you can, you've proven the habit — then the question becomes financial readiness.\n\n"
+                "SAFER PATH\n"
+                "Stay employed, learn in mornings (not after work when you're drained), "
+                "ask for reduced hours or remote work, and leave only when you have savings or an offer."
+            )
+        if "what would you do" in text or "what you would do" in text or "you would do" in text:
+            return (
+                "Honestly? I wouldn't quit until I had: (1) 6+ months of expenses saved, "
+                "(2) a clear tech lane chosen — not 'I'll learn everything', and "
+                "(3) at least one real project built to prove I can follow through.\n\n"
+                "The biggest risk isn't the career change. It's making that change from a place of financial panic. "
+                "Pressure and scarcity are terrible learning environments."
+            )
+        if "safest option" in text or "safer" in text:
+            return (
+                "Safest path: keep the income, create a structured 30-minute daily learning block "
+                "(morning works better than evening when you're already drained), pick one tech lane, "
+                "and build your first real project within 30 days.\n\n"
+                "When you have a working portfolio piece and 3+ months of savings runway, start applying. "
+                "Leave only when you have an offer or solid financial buffer."
+            )
+        if "should i" in text:
+            return (
+                "That depends on one variable: do you have 6+ months of expenses saved?\n\n"
+                "If yes: quitting to learn full-time can work — but only with a strict self-directed schedule "
+                "and a clear target role.\n\n"
+                "If no: the financial pressure will actively damage your learning. "
+                "What's your actual runway right now?"
+            )
+
+    # Money vs. free time
+    if ("money" in text or "money" in recent) and ("free time" in text or "time" in text):
+        if "pick one" in text and "defend" in text:
+            return (
+                "I'll defend free time:\n\n"
+                "Money above a comfort threshold shows diminishing returns on life satisfaction — "
+                "the research on this is consistent. Time is non-renewable. "
+                "You can earn more money; you cannot earn more hours.\n\n"
+                "People who prioritize time over money (once basic needs are covered) "
+                "consistently report higher wellbeing."
+            )
+        if "argue the opposite" in text or "other side" in text:
+            return (
+                "Case for money:\n\n"
+                "Without financial security, 'free time' is just anxiety with an open calendar. "
+                "Money buys options, eliminates survival stress, and funds what makes free time meaningful. "
+                "Most people dramatically underestimate how much financial instability costs their mental health and freedom of choice."
+            )
+
+    # Is failure good/bad
+    if "failure" in text or "fail" in text:
+        if "is failure bad" in text or ("failure" in text and "bad" in text):
+            return (
+                "Failure itself isn't inherently bad — it's a feedback mechanism. "
+                "The question is what you do with it.\n\n"
+                "Failure that produces learning and adjustment: useful.\n"
+                "Failure you ignore or repeat unchanged: costly.\n"
+                "Never failing because you never tried: the worst outcome.\n\n"
+                "The risk isn't failure. It's staying safe and stagnant."
+            )
+        if "so failure is good" in text or ("failure" in text and "good" in text and len(state.turns) > 2):
+            return (
+                "Not exactly — it's a tool, not a trophy.\n\n"
+                "Celebrating failure for its own sake is just rationalizing inaction. "
+                "What matters is: did you try something real, get feedback, and adjust your approach? "
+                "Failure is the step in that process, not the goal."
+            )
+
+    # Generic pros/cons without clear topic
+    if "pros and cons" in text or "give me pros" in text:
+        for u, _ in reversed(state.turns[-6:]):
+            if any(kw in u.lower() for kw in ["quit", "leave", "change", "start", "stop", "should i"]):
+                return (
+                    "To give you a useful breakdown, be specific: what are the two options you're choosing between? "
+                    "The more concrete the decision, the better the analysis."
+                )
+        return "Give me the specific decision — what are your two options? I'll break it down with pros, cons, and a recommendation."
+
+    return None
+
+
+# ============================================================================
+# FOLLOW-UP CHAIN HANDLER
+# ============================================================================
+
+def _simple_definition(topic: str) -> str:
+    """One-line plain-language definition for a topic."""
+    defs = {
+        "tech": "learning skills that let you solve problems with computers",
+        "coding": "giving computers step-by-step instructions in a language they understand",
+        "success": "consistently making progress toward what genuinely matters to you",
+        "stress": "your system signaling that something needs to change",
+        "failure": "feedback that reveals what to adjust next time",
+        "ai": "software that learns patterns from data and uses them to make decisions",
+    }
+    return defs.get(topic, f"the core idea of {topic} without the extra complexity")
+
+
+def follow_up_chain_response(user_text: str, state: ChatState) -> Optional[str]:
+    """Build directly on the previous answer instead of resetting context."""
+    text = normalize_text(user_text).strip().rstrip("?").strip()
+    recent_context = " ".join(u.lower() for u, _ in state.turns[-8:])
+    goals = state.user_goals
+    constraints = state.user_constraints
+    time_limited = "works 9-5" in constraints or "tired after work" in constraints
+
+    # ── "Why?" follow-ups ──
+    why_triggers = {"why", "why is that", "why does that matter", "why does it matter",
+                    "why should i care", "why is it important", "why does that"}
+    if text in why_triggers or text.startswith("why "):
+        if "success" in recent_context or "successful" in recent_context:
+            return (
+                "Because without your own definition of success, you'll spend energy optimizing for someone else's version. "
+                "Most people feel 'successful' on paper and hollow inside — because they hit external markers while drifting from their own values. "
+                "Knowing what success means to *you* prevents that trap."
+            )
+        if "failure" in recent_context:
+            return (
+                "Because you can't grow without feedback, and failure is the most direct feedback you can get. "
+                "Avoiding failure by never trying guarantees stagnation — and that's a far worse outcome."
+            )
+        if any(w in recent_context for w in ["tech", "coding", "programming", "developer"]):
+            return (
+                "Tech matters for your situation specifically because it's one of the few fields where "
+                "self-taught people regularly get hired, the income ceiling is high, and you can start with zero cost. "
+                "Given that you're already feeling the friction of your current path, "
+                "tech gives you a concrete direction with real upside."
+            )
+        if "goal" in recent_context or "plan" in recent_context or "step" in recent_context:
+            return (
+                "Because goals without a genuine reason behind them don't survive hard days. "
+                "Knowing *why* you want something is what keeps you moving when the process feels slow or pointless."
+            )
+        if state.turns:
+            last_bot = state.turns[-1][1]
+            return (
+                "Because it connects directly to the outcome you said you want. "
+                f"Specifically: what part of what I just said — '{last_bot[:80]}...' — are you questioning? "
+                "I'll go deeper on that exact piece."
+            )
+
+    # ── "Why does coding matter?" / "Why should I care about tech?" ──
+    if any(t in text for t in ["why does it matter", "why should i care about", "why is it important"]):
+        if any(w in recent_context for w in ["coding", "code", "programming"]):
+            return (
+                "Coding matters because it lets you build things that work at scale. "
+                "In practical terms: high job security, good pay, remote-friendly, and you can self-teach your way in without a degree. "
+                "For someone feeling trapped in a job they don't want, it's one of the fastest realistic exits."
+            )
+        if "tech" in recent_context:
+            return (
+                "Tech matters because it's one of the few industries where skills matter more than credentials. "
+                "You can enter without a four-year degree, the pay is well above average, "
+                "and once you're in, you have options: employment, freelance, or your own product. "
+                "For someone eyeing a career change, those three things together are rare."
+            )
+        if "success" in recent_context:
+            return (
+                "Defining success matters because vague goals produce vague effort. "
+                "If you don't know what you're actually aiming for, you can't tell whether you're making progress or wasting time."
+            )
+
+    # ── Meta-complaints: "stop being generic", "give me a real answer" ──
+    meta_triggers = [
+        "stop being generic", "you're being generic", "too generic", "stop being vague",
+        "give me a real answer", "real answer please", "be honest", "be more specific",
+    ]
+    if any(t in text for t in meta_triggers) or text == "be honest":
+        if any(w in recent_context for w in ["tech", "coding", "get into tech"]):
+            if time_limited:
+                return (
+                    "Real answer for your situation:\n"
+                    "Morning > evening for learning when you're drained after work.\n"
+                    "Week 1–2: 25 min/day on Python (CS50P — free, well-structured).\n"
+                    "Week 3–4: Build one tiny project — a calculator, a to-do list, anything you made yourself.\n"
+                    "Month 2: Put it on GitHub. Write one LinkedIn post about what you learned.\n"
+                    "Month 3+: Apply for junior roles. Don't wait until you 'feel ready' — you won't."
+                )
+            return (
+                "Real answer: pick Python, do CS50P or freeCodeCamp (both free), "
+                "build 2 projects within 60 days, and apply before you think you're ready. "
+                "Most people who get into tech self-taught didn't feel ready either."
+            )
+        if "stress" in recent_context:
+            return (
+                "Real talk: if the stress is structural (bad manager, toxic culture, no growth), "
+                "it won't fix itself. You need either a conversation, a boundary, or an exit plan. "
+                "Which of those applies to your situation right now?"
+            )
+        return (
+            "Fair. Let me drop the filler: what's the exact question you want a direct answer to? "
+            "One sentence. I'll give it to you without padding."
+        )
+
+    # ── "Be specific" / "More specific" ──
+    if any(t in text for t in ["be specific", "get specific", "more specific", "give me specifics"]):
+        if any(w in recent_context for w in ["tech", "coding", "get into tech", "plan"]):
+            if time_limited:
+                return (
+                    "Specific — given you work 9–5 and are tired after:\n"
+                    "• Use mornings, not evenings. 25 min before work beats 90 min exhausted.\n"
+                    "• Week 1–2: Python basics via CS50P (free on YouTube).\n"
+                    "• Week 3–4: Build one project from scratch (tip calculator, budget tracker, anything).\n"
+                    "• Month 2: Push to GitHub, write one LinkedIn post about it.\n"
+                    "• Month 3: Start applying — junior dev, IT support, or data analyst roles."
+                )
+            return (
+                "Specific plan: Python → CS50P or freeCodeCamp → 2 real projects within 60 days → GitHub → apply. "
+                "Pick your lane first: web dev, data, or IT. Each one has a different entry path."
+            )
+        if "stress" in recent_context:
+            return (
+                "Specific: list your top 3 stressors right now. "
+                "For each ask: is this urgent? Is it in my control? "
+                "Urgent + controllable → act today. Not controllable → set a boundary and stop carrying it."
+            )
+        return (
+            "Specific: tell me the exact thing you want answered or done, and I'll give you a direct response with no filler."
+        )
+
+    # ── "Make it actionable (for today)" ──
+    if any(t in text for t in ["make it actionable", "actionable for today", "now make it actionable", "actionable"]):
+        if any(w in recent_context for w in ["tech", "coding", "plan", "step"]):
+            if time_limited:
+                return (
+                    "Today's action: set a 25-minute timer before work or at lunch. "
+                    "Go to replit.com (no install needed). Open Python. "
+                    "Write a program that prints 'Hello [your name]' and adds two numbers. "
+                    "That's it. You've started."
+                )
+            return (
+                "For today: go to replit.com, start a Python file, and write a program that does one useful thing — "
+                "prints your name, calculates a tip, whatever. Finish it before anything else."
+            )
+        return (
+            "What's the one thing from our conversation you want to act on today? Name it specifically, "
+            "and I'll give you the exact first step."
+        )
+
+    # ── "Simplify it" ──
+    if any(t in text for t in ["simplif", "simpler", "now simplify", "make it simpler", "break it down"]):
+        if any(w in recent_context for w in ["plan", "step", "tech", "coding"]):
+            return "Simplified: pick one skill, practice 30 minutes daily, build one project, apply before you feel ready."
+        if state.last_explained_topic:
+            return explain_simply(state.last_explained_topic)
+        for tag in ["tech", "coding", "success", "stress", "failure", "ai"]:
+            if tag in recent_context:
+                return f"Simple: {tag} = {_simple_definition(tag)}"
+        return "Which specific part do you want simplified? Name it and I'll do it in one sentence."
+
+    # ── "What should I actually do?" / "What should I focus on?" ──
+    what_to_do_triggers = [
+        "what should i actually do", "what should i focus on",
+        "what should i do", "next step", "what's my next move",
+        "what do i do next", "what should i do next",
+    ]
+    if any(t in text for t in what_to_do_triggers):
+        if "get into tech" in goals or any(w in recent_context for w in ["tech", "coding"]):
+            time_note = " (30 min in the morning beats 2 hrs exhausted at 10pm)" if time_limited else ""
+            return (
+                f"Your clearest next step: pick one tech lane today — "
+                f"web dev (HTML/CSS/JS), backend (Python/Node), data science, or IT support — "
+                f"and start one beginner project this week{time_note}.\n\n"
+                f"Don't study for months before building. Build immediately, even badly. "
+                f"Shipping something broken teaches more than reading about perfection."
+            )
+        if state.turns:
+            return (
+                "Based on what you've shared: what's the single action that would make the biggest difference right now? "
+                "Name it specifically — I'll help you take the first step."
+            )
+
+    # ── "I only have 6 months to change my life" ──
+    if any(t in text for t in ["6 months", "six months", "only have", "limited time"]):
+        if any(w in recent_context for w in ["tech", "coding", "change", "career"]):
+            return (
+                "6 months is actually enough to get a junior role — if you're strategic:\n\n"
+                "Month 1: Pick your lane (web dev or data), learn the basics daily.\n"
+                "Month 2: Build project #1 (small but real).\n"
+                "Month 3: Build project #2 (something you actually want to exist).\n"
+                "Month 4: Polish GitHub, write LinkedIn posts, start applying.\n"
+                "Month 5–6: Interview, iterate on feedback, keep applying.\n\n"
+                "The key constraint isn't time — it's focus. One lane, one project at a time."
+            )
+        return (
+            "6 months is real runway if you focus it. What's the one outcome you want at the end of those 6 months? "
+            "Be specific and I'll help you work backwards from it."
+        )
+
+    # ── "Ask me questions" ──
+    if "ask me questions" in text or text == "ask me":
+        return (
+            "Let's figure this out together. Three questions:\n"
+            "1. What's one part of your life that feels most off-track right now?\n"
+            "2. What have you already tried to change it?\n"
+            "3. What would 'better' actually look like to you in concrete terms?\n\n"
+            "Answer any or all of them — we'll work from there."
+        )
+
+    # ── "Pretend you're me" / "You're 22, broke..." ──
+    if "pretend you're me" in text or "pretend you are me" in text:
+        return (
+            "Alright — tell me your actual situation: age, current job, available time per day, "
+            "any skills or experience, and the biggest constraint you're facing. "
+            "The more specific, the more useful my answer."
+        )
+
+    if any(w in text for w in ["22", "broke", "want to get into tech", "young and broke"]) and "next move" in text:
+        return (
+            "If I'm 22, broke, and want into tech:\n\n"
+            "Today: install Python, watch the first 30 min of CS50P (free on YouTube).\n"
+            "This week: write one working script — tip calculator, word counter, anything.\n"
+            "Month 1: finish CS50P or one freeCodeCamp path.\n"
+            "Month 2: build a small project that solves a problem you personally have.\n"
+            "Month 3–6: apply to junior roles, IT helpdesk, or data analyst positions. Don't wait to feel ready.\n\n"
+            "Everything you need is free: CS50, freeCodeCamp, The Odin Project, YouTube."
+        )
+
+    # ── "What's your exact next move?" ──
+    if "exact next move" in text:
+        age = state.profile.get("age", "")
+        broke_context = "broke" in recent_context or "limited budget" in constraints
+        if broke_context or age:
+            age_note = f"At {age}, " if age else ""
+            budget_note = "Cost is zero — CS50, freeCodeCamp, and The Odin Project are all free. " if broke_context else ""
+            return (
+                f"{age_note}here's the exact move:\n"
+                f"Today: go to replit.com, open Python, write 5 lines of code.\n"
+                f"{budget_note}"
+                f"Tomorrow: continue for 25 minutes.\n"
+                f"Week 4: finish one project. Put it on GitHub.\n"
+                f"Month 3: start applying. The first application is the hardest. Send it anyway."
+            )
+        return (
+            "Exact next move depends on your situation. Tell me: what's your current job, available time each day, "
+            "and which area of tech interests you? Then I can give you a precise step."
+        )
+
+    return None
+
+
+# ============================================================================
+# PLAN REQUEST HANDLER
+# ============================================================================
+
+def plan_request_response(user_text: str, state: ChatState) -> Optional[str]:
+    """Handle structured plan requests like '3-step plan to get into tech'."""
+    text = normalize_text(user_text)
+    plan_triggers = [
+        "3-step plan", "3 step plan", "step plan", "plan to get into tech",
+        "plan for tech", "give me a plan", "make a plan", "roadmap",
+        "path to tech", "how do i get into tech", "get into tech",
+        "give me a 3", "step-by-step",
+    ]
+    if not any(t in text for t in plan_triggers):
+        return None
+
+    constraints = state.user_constraints
+    time_limited = "works 9-5" in constraints or "tired after work" in constraints
+
+    if any(w in text for w in ["tech", "coding", "code", "developer", "programmer", "software"]) or \
+       "get into tech" in state.user_goals:
+        if time_limited:
+            return (
+                "3-Step Tech Plan (Built for Working 9–5):\n\n"
+                "STEP 1 — PICK YOUR LANE (This week)\n"
+                "Choose ONE path: web development, data/Python, IT support, or AI/ML. "
+                "Don't pick multiple — one lane, full focus.\n\n"
+                "STEP 2 — BUILD BEFORE YOU OVER-STUDY (Month 1–2)\n"
+                "25–30 min/day in the morning before work — not at night when you're drained. "
+                "Use free resources: CS50P, freeCodeCamp, The Odin Project. "
+                "Build one real project by end of month 2 — doesn't need to be impressive, needs to exist.\n\n"
+                "STEP 3 — GET VISIBLE, THEN APPLY (Month 3–6)\n"
+                "Put your project on GitHub. Write one post about what you learned. "
+                "Start applying to junior roles at month 3 — not when you 'feel ready'. "
+                "Feedback from real interviews teaches faster than more studying."
+            )
+        return (
+            "3-Step Plan to Get Into Tech:\n\n"
+            "STEP 1 — PICK YOUR LANE\n"
+            "Web dev (HTML/CSS/JS → React), data/Python (pandas → SQL → ML), "
+            "or IT support (networking + certs). One path only.\n\n"
+            "STEP 2 — BUILD REAL THINGS\n"
+            "Two projects minimum: one following a tutorial (to learn the pattern), "
+            "one you designed yourself (to prove you can apply it). "
+            "Free resources: CS50P, freeCodeCamp, The Odin Project.\n\n"
+            "STEP 3 — APPLY BEFORE YOU'RE READY\n"
+            "Start applying at month 3. Junior roles, internships, contract work. "
+            "Real application feedback beats six more months of studying."
+        )
+
+    return None
+
+
+# ============================================================================
+# PERSONALIZED ADVICE HANDLER
+# ============================================================================
+
+def personalized_advice_response(user_text: str, state: ChatState) -> Optional[str]:
+    """Generate advice tailored to stored goals and constraints."""
+    text = normalize_text(user_text)
+    goals = state.user_goals
+    constraints = state.user_constraints
+
+    if not goals and not constraints and not state.profile:
+        return None
+
+    personalized_triggers = [
+        "based on what i've told you", "based on what i told you",
+        "given everything", "given what i said", "based on my situation",
+        "what should i do next", "what do i do with all this",
+    ]
+    if not any(t in text for t in personalized_triggers):
+        return None
+
+    parts = []
+    if "get into tech" in goals:
+        parts.append("your goal is to get into tech")
+    if "works 9-5" in constraints:
+        parts.append("you're working full-time")
+    if "tired after work" in constraints:
+        parts.append("you're tired after work")
+    if "limited budget" in constraints:
+        parts.append("budget is tight")
+    if "no experience" in constraints:
+        parts.append("you're starting with no prior experience")
+
+    if not parts:
+        return None
+
+    context_str = ", ".join(parts)
+    morning_note = (
+        "\nMorning study (before work) consistently outperforms evening study "
+        "when you're already drained — even 25 minutes beats 90 tired minutes."
+        if "tired after work" in constraints else ""
+    )
+    budget_note = (
+        "\nEvery resource you need is free: CS50P (Harvard), freeCodeCamp, The Odin Project, YouTube. "
+        "No bootcamp or paid course needed to start."
+        if "limited budget" in constraints else ""
+    )
+    experience_note = (
+        "\nNo experience is fine — everyone in tech was a beginner. "
+        "What matters is consistent practice and one real project to show. "
+        if "no experience" in constraints else ""
+    )
+
+    return (
+        f"Given your situation ({context_str}):\n"
+        f"{morning_note}"
+        f"{budget_note}"
+        f"{experience_note}\n"
+        f"Concrete next step: this week, commit to 25 minutes a day of structured learning. "
+        f"Pick one resource from above and start it today — not when 'things calm down'."
+    )
+
+
+# ============================================================================
+# CONSTRAINT / GOAL RESPONSE HANDLER
+# ============================================================================
+
+def constraint_aware_response(user_text: str, state: ChatState) -> Optional[str]:
+    """Respond to constraint updates by integrating them with known goals."""
+    text = normalize_text(user_text)
+    goals = state.user_goals
+
+    is_constraint = any(t in text for t in [
+        "i work 9", "work 9-5", "9 to 5", "nine to five",
+        "tired after work", "tired when i get home",
+        "no experience", "i'm broke", "im broke", "no money",
+        "limited time", "don't have time", "only have",
+    ])
+
+    has_tech_goal = "get into tech" in goals or any(
+        "tech" in u.lower() or "coding" in u.lower() for u, _ in state.turns[-10:]
+    )
+    is_tired = "tired" in text
+    is_broke = any(w in text for w in ["broke", "no money", "can't afford"])
+    is_schedule = any(w in text for w in ["9-5", "9 to 5", "nine to five", "work"])
+    no_exp = "no experience" in text
+
+    # Also activate for tech follow-up questions when constraints are already stored
+    just_stated_constraint = any(c in state.user_constraints for c in ["works 9-5", "tired after work"])
+    is_tech_question = any(w in text for w in ["tech", "coding", "learn", "how do i", "still learn"])
+
+    # Skip if neither a fresh constraint nor a follow-up after a known constraint
+    if not is_constraint and not (just_stated_constraint and is_tech_question):
+        return None
+
+    # Don't override emotional expressions — let them get proper empathy treatment
+    emotion_words = ["scared", "afraid", "nervous", "excited", "happy", "sad",
+                     "anxious", "overwhelmed", "frustrated", "angry", "worried"]
+    if any(e in text for e in emotion_words) and not is_constraint:
+        return None
+
+    if (has_tech_goal or is_tech_question) and (is_constraint or just_stated_constraint):
+        if is_tired and (is_schedule or "works 9-5" in state.user_constraints):
+            return (
+                "Got it — you're working full-time and running on empty by evening. "
+                "That's a real constraint, not an excuse. Here's what actually works in that situation:\n\n"
+                "Morning learning beats evening learning. 25 minutes before work, "
+                "when your brain is fresh, is more effective than 90 minutes exhausted at 10pm. "
+                "Can you carve out 25 minutes before your shift starts?"
+            )
+        if is_broke:
+            return (
+                "Cost is zero — that's not the constraint. "
+                "CS50P (Harvard's Python course), freeCodeCamp, and The Odin Project are all completely free. "
+                "The real constraints are time and daily consistency. "
+                "How much time can you realistically put in per day right now?"
+            )
+        if is_schedule or "works 9-5" in state.user_constraints:
+            return (
+                "Working 9–5 makes evening learning hard, but it doesn't block you. "
+                "30 minutes in the morning before work is the most reliable window for most people in this situation. "
+                "What does your morning look like — is there a 25-minute slot you could protect?"
+            )
+        if no_exp:
+            return (
+                "No experience is the normal starting point for self-taught developers — it's expected. "
+                "What matters is consistency and building real projects. "
+                "Given that, what area of tech are you most drawn to: building things (web/backend), "
+                "working with data, or getting into IT/support first?"
+            )
+
+    return None
+
+
 def topic_pivot_response(state: Optional[ChatState]) -> str:
     topic = state.current_topic if state else None
     if topic in TOPIC_GUIDES:
@@ -1083,6 +1857,12 @@ def topical_fallback_reply(user_text: str, state: Optional[ChatState]) -> Option
 
 def solve_math_query(text: str) -> Optional[str]:
     """Solve very basic arithmetic expressions safely."""
+    # Guard: don't interpret work-schedule ranges as arithmetic (e.g. "I work 9-5")
+    if re.search(r"\b9\s*[-\u2013]\s*5\b", text) and any(
+        w in text for w in ["work", "job", "schedule", "hour", "tired", "shift", "office"]
+    ):
+        return None
+
     expr = text
     original_expr = expr
     expr = re.sub(r"\bplus\b", "+", expr)
@@ -1125,15 +1905,21 @@ def solve_math_query(text: str) -> Optional[str]:
     return None
 
 
-def fallback_factual_reply(user_text: str) -> str:
+def fallback_factual_reply(user_text: str, state: Optional[ChatState] = None) -> str:
     text = normalize_text(user_text)
     for topic, guide in TOPIC_GUIDES.items():
         if contains_phrase(text, topic):
             return guide
+    # Tech/coding queries — return useful direction instead of a canned fallback
+    if any(w in text for w in ["tech", "coding", "code", "programming", "developer", "software"]):
+        return (
+            "That's a tech question. To give you the most useful answer: "
+            "are you asking about how to learn it, which area to focus on, job prospects, or something else? "
+            "Point me at the specific angle and I'll go deep."
+        )
     return (
-        "I don't have a precise answer to that yet, but I can still help. "
-        "Try asking with a bit more detail, for example: 'when was 9/11', "
-        "'what is 2+2', or 'tell me about Ancient Egypt'."
+        "I want to give you a useful answer, not a generic one. "
+        "Can you give me one more detail — what specifically do you want to know or decide?"
     )
 
 
@@ -1238,9 +2024,52 @@ def build_response(
     # Normalize emotion to template key
     emotion_key = "positive" if emotion == "positive" else \
                   "negative" if emotion == "negative" else "neutral"
-    
+
+    # New intent types handled directly
+    if intent == "decision_request":
+        resp = decision_framework_response(user_text, state)
+        if resp:
+            return resp
+        return "Give me the specific decision — what are your two options? I'll break it down with pros, cons, and a recommendation."
+
+    if intent == "plan_request":
+        resp = plan_request_response(user_text, state)
+        if resp:
+            return resp
+        return "Tell me what you're planning for and I'll give you a structured steps."
+
+    if intent == "context_connection":
+        resp = context_connection_response(user_text, state)
+        if resp:
+            return resp
+
+    if intent == "follow_up":
+        resp = follow_up_chain_response(user_text, state)
+        if resp:
+            return resp
+
+    if intent == "meta_complaint":
+        resp = follow_up_chain_response(user_text, state)
+        if resp:
+            return resp
+        return "Fair point. Tell me exactly what you want answered in one sentence and I'll give you a direct response."
+
+    if intent == "constraint_update":
+        resp = constraint_aware_response(user_text, state)
+        if resp:
+            return resp
+
+    if intent == "vague_input":
+        # Ask a SPECIFIC clarifying question based on context
+        recent = " ".join(u.lower() for u, _ in state.turns[-6:])
+        if any(w in recent for w in ["tech", "coding", "career"]):
+            return "When you say that — are you asking about learning path, time commitment, cost, or job prospects? Which angle matters most to you?"
+        if any(w in recent for w in ["stress", "work", "tired", "quit"]):
+            return "Can you be specific about what you're dealing with — is this about workload, a person at work, or uncertainty about the direction you're heading?"
+        return "Can you be more specific? What's the exact question or situation you want help with?"
+
     # Get template(s)
-    templates = STRATEGY_TEMPLATES.get(intent, {}).get(emotion_key, ["Tell me more."])
+    templates = STRATEGY_TEMPLATES.get(intent, {}).get(emotion_key, ["What's the specific thing you're trying to figure out?"])
     
     # Handle both single string and list of strings
     if isinstance(templates, str):
@@ -1295,7 +2124,7 @@ def build_response(
     # Default response if no knowledge match
     if "{answer" in template or "{" in template:
         # Template expects argument we don't have
-        default_templates = STRATEGY_TEMPLATES.get("general_chat", {}).get(emotion_key, ["Tell me more."])
+        default_templates = STRATEGY_TEMPLATES.get("general_chat", {}).get(emotion_key, ["What's the specific thing you're trying to figure out?"])
         if isinstance(default_templates, str):
             default_templates = [default_templates]
         return choose_non_repeating(default_templates, state)
@@ -1410,6 +2239,7 @@ class ChatbotEngine:
         # 1. Classify intent
         intent = classify_intent(sanitized, state)
         state.intents.append(intent)
+        state.last_intent = intent
         
         # 2. Classify emotion
         emotion = classify_emotion(sanitized)
